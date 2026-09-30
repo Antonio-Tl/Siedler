@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Siedlungen</title>
-  <meta name="description" content="Siedlungen – ein 3D-Inselspiel mit Online-Multiplayer und Bots." />
+  <meta name="description" content="Siedlungen – ein 3D-Inselspiel mit Online-Multiplayer, Hot-Seat und Bots." />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏠</text></svg>" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -14,75 +14,9 @@
     { "imports": { "three": "/vendor/three/build/three.module.js", "three/addons/": "/vendor/three/examples/jsm/" } }
   </script>
 </head>
-<body>
-  <!-- Startbildschirm & Lobby -->
-  <div id="menu-screen" class="screen">
-    <div class="menu-bg"></div>
-    <div class="menu-card parchment">
-      <div class="crest big">⚜</div>
-      <h1 class="title">Siedlungen</h1>
-      <p class="subtitle">Sammle Rohstoffe, handle mit deinen Nachbarn und baue dich zu zehn Siegpunkten.</p>
-
-      <div id="menu-home">
-        <label class="field">
-          <span>Dein Name</span>
-          <input id="name-input" maxlength="18" placeholder="Wie heißt du?" autocomplete="nickname" />
-        </label>
-
-        <div class="menu-options">
-          <section class="option">
-            <h3>Allein gegen Bots</h3>
-            <p>Sofort losspielen gegen computergesteuerte Siedler.</p>
-            <div class="row">
-              <label class="mini">Gegner
-                <select id="solo-bots"><option value="1">1</option><option value="2">2</option><option value="3" selected>3</option></select>
-              </label>
-              <label class="mini">Ziel
-                <select id="solo-vp"><option value="8">8 Punkte</option><option value="10" selected>10 Punkte</option><option value="12">12 Punkte</option></select>
-              </label>
-            </div>
-            <button class="btn primary" id="btn-solo">Partie starten</button>
-          </section>
-
-          <section class="option">
-            <h3>Mit Freunden online</h3>
-            <p>Erstelle einen Raum und teile den Code oder Link. Freie Plätze füllen Bots.</p>
-            <button class="btn primary" id="btn-create">Raum erstellen</button>
-            <div class="join-row">
-              <input id="code-input" maxlength="5" placeholder="CODE" autocomplete="off" />
-              <button class="btn" id="btn-join">Beitreten</button>
-            </div>
-          </section>
-        </div>
-      </div>
-
-      <div id="menu-room" hidden>
-        <div class="room-head">
-          <div>
-            <div class="eyebrow">Raumcode</div>
-            <div class="room-code" id="room-code">-----</div>
-          </div>
-          <button class="btn small" id="btn-copy-link">🔗 Einladungslink kopieren</button>
-        </div>
-        <ul class="seat-list" id="seat-list"></ul>
-        <div class="room-options" id="room-options">
-          <button class="btn small" id="btn-add-bot">+ Bot hinzufügen</button>
-          <label class="mini">Siegpunkte
-            <select id="room-vp"><option value="8">8</option><option value="10">10</option><option value="12">12</option><option value="14">14</option></select>
-          </label>
-        </div>
-        <p class="hint" id="room-hint"></p>
-        <div class="row end">
-          <button class="btn ghost" id="btn-leave-room">Verlassen</button>
-          <button class="btn primary" id="btn-start">Partie beginnen</button>
-        </div>
-      </div>
-      <div class="conn-state" id="conn-state"></div>
-    </div>
-  </div>
-
-  <!-- Spiel -->
-  <div id="game-screen" class="screen" hidden>
+<body class="menu-open">
+  <!-- Spiel (liegt immer im Hintergrund; im Menü unscharf) -->
+  <div id="game-screen" class="screen">
     <div class="frame">
       <header class="topbar">
         <div class="brand"><span class="crest">⚜</span><span>Siedlungen</span></div>
@@ -91,7 +25,8 @@
           <span class="room-chip" id="room-chip" hidden></span>
           <button class="btn-rules" id="btn-rules">📖 Regeln</button>
           <button class="round-btn" id="btn-sound" title="Ton an/aus">🔊</button>
-          <button class="round-btn" id="btn-menu" title="Menü">⚙</button>
+          <button class="round-btn" id="btn-settings" title="An deinem Tisch – Einstellungen">⚙</button>
+          <button class="round-btn" id="btn-menu" title="Menü">☰</button>
         </div>
       </header>
 
@@ -107,6 +42,7 @@
 
         <section class="board-wrap" id="board-wrap">
           <div class="board-canvas" id="board-canvas"></div>
+          <div class="vignette"></div>
           <div class="cam-toolbar">
             <button class="tool" id="zoom-out" title="Herauszoomen">−</button>
             <input type="range" id="zoom-slider" min="0" max="100" value="45" aria-label="Zoom" />
@@ -128,6 +64,7 @@
           <div class="toasts" id="toasts"></div>
           <div class="banner" id="banner" hidden></div>
           <div class="tooltip parchment" id="tooltip" hidden></div>
+          <div class="tour-panel parchment" id="tour-panel" hidden></div>
         </section>
 
         <aside class="turn-panel parchment">
@@ -153,6 +90,114 @@
     </div>
   </div>
 
+  <!-- Startmenü & Lobby -->
+  <div id="menu-screen" class="menu-overlay">
+    <div class="menu-card parchment">
+      <div class="crest big">⚜</div>
+
+      <div id="menu-home">
+        <h1 class="title">Jede große Geschichte beginnt mit einer Siedlung.</h1>
+        <p class="subtitle">Eine Insel voller Möglichkeiten. Sammle, handle und baue dir deinen Platz in ihrer Geschichte.</p>
+
+        <div class="resume-row" id="resume-row" hidden>
+          <button class="resume continue" id="btn-continue">
+            <span class="resume-art" id="continue-art"></span>
+            <span class="resume-text"><b>Letzte Partie fortsetzen</b><small id="continue-sub">Zurück auf deine Insel</small></span>
+            <span class="arrow">→</span>
+          </button>
+          <button class="resume saved" id="btn-saved">
+            <span class="resume-art">📖</span>
+            <span class="resume-text"><b>Gespeicherte Partien <span class="count" id="saved-count">0</span></b><small>Wähle ein Abenteuer</small></span>
+            <span class="arrow">→</span>
+          </button>
+        </div>
+        <div class="autosave-note" id="autosave-note" hidden>🪶 Jede Insel wird automatisch gespeichert.</div>
+
+        <div class="divider"><span>Ein neues Abenteuer beginnen</span></div>
+        <div class="mode-row">
+          <button class="mode active" data-mode="ai"><span class="mode-ico">👑</span><b>Gegen die KI</b><small>KI-Siedler als Gegner</small></button>
+          <button class="mode" data-mode="friends"><span class="mode-ico">🤝</span><b>Mit Freunden</b><small>Privater Online-Raum</small></button>
+          <button class="mode" data-mode="hotseat"><span class="mode-ico">🎲</span><b>An einem Gerät</b><small>Reihum weitergeben</small></button>
+        </div>
+
+        <div class="mode-panel" data-panel="ai">
+          <label class="field"><span>Dein Name</span><input class="name-input" maxlength="18" placeholder="Wie heißt du?" autocomplete="nickname" /></label>
+          <div class="row wrap">
+            <label class="mini">Gegner
+              <select id="solo-bots"><option value="1">1 KI-Siedler</option><option value="2">2 KI-Siedler</option><option value="3" selected>3 KI-Siedler</option></select>
+            </label>
+            <label class="mini">Ziel
+              <select id="solo-vp"><option value="8">8 Siegpunkte</option><option value="10" selected>10 Siegpunkte</option><option value="12">12 Siegpunkte</option></select>
+            </label>
+            <label class="mini">Tempo
+              <select id="solo-pace"><option value="relaxed">Gemütlich</option><option value="normal" selected>Normal</option><option value="fast">Zügig</option></select>
+            </label>
+          </div>
+        </div>
+
+        <div class="mode-panel" data-panel="friends" hidden>
+          <label class="field"><span>Dein Name</span><input class="name-input" maxlength="18" placeholder="Wie heißt du?" autocomplete="nickname" /></label>
+          <label class="field"><span>Raumcode (optional, zum Beitreten)</span><input id="code-input" maxlength="5" placeholder="CODE" autocomplete="off" /></label>
+        </div>
+
+        <div class="mode-panel" data-panel="hotseat" hidden>
+          <div class="field"><span>Wer sitzt am Tisch?</span></div>
+          <div id="hotseat-names" class="hotseat-names"></div>
+          <div class="row wrap">
+            <button class="btn small" id="hs-add">+ Mitspieler</button>
+            <label class="mini">KI-Siedler dazu
+              <select id="hs-bots"><option value="0" selected>keine</option><option value="1">1</option><option value="2">2</option></select>
+            </label>
+            <label class="mini">Ziel
+              <select id="hs-vp"><option value="8">8 Siegpunkte</option><option value="10" selected>10 Siegpunkte</option><option value="12">12 Siegpunkte</option></select>
+            </label>
+          </div>
+        </div>
+
+        <p class="mode-desc" id="mode-desc"></p>
+        <button class="btn primary block big" id="btn-go">Die Insel besiedeln →</button>
+        <div class="menu-foot">4 Siedler · 19 Länder · endlose Möglichkeiten</div>
+      </div>
+
+      <div id="menu-games" hidden>
+        <h2 class="title small">Gespeicherte Partien</h2>
+        <p class="subtitle">Jede Insel wird automatisch gespeichert. Kehre zurück, wann immer du magst.</p>
+        <ul class="games-list" id="games-list"></ul>
+        <div class="row end"><button class="btn ghost" id="btn-games-back">← Zurück</button></div>
+      </div>
+
+      <div id="menu-room" hidden>
+        <div class="room-head">
+          <div>
+            <div class="eyebrow">Raumcode</div>
+            <div class="room-code" id="room-code">-----</div>
+          </div>
+          <button class="btn small" id="btn-copy-link">🔗 Einladungslink kopieren</button>
+        </div>
+        <ul class="seat-list" id="seat-list"></ul>
+        <div class="room-options" id="room-options">
+          <button class="btn small" id="btn-add-bot">+ KI-Siedler hinzufügen</button>
+          <label class="mini">Siegpunkte
+            <select id="room-vp"><option value="8">8</option><option value="10">10</option><option value="12">12</option><option value="14">14</option></select>
+          </label>
+          <label class="mini">Tempo
+            <select id="room-pace"><option value="relaxed">Gemütlich</option><option value="normal">Normal</option><option value="fast">Zügig</option></select>
+          </label>
+        </div>
+        <p class="hint" id="room-hint"></p>
+        <div class="row end">
+          <button class="btn ghost" id="btn-leave-room">Verlassen</button>
+          <button class="btn primary" id="btn-start">Partie beginnen</button>
+        </div>
+      </div>
+      <div class="conn-state" id="conn-state"></div>
+    </div>
+  </div>
+
+  <!-- Übergabe im Hot-Seat-Modus -->
+  <div id="curtain" class="curtain" hidden></div>
+  <div id="fly-layer" class="fly-layer"></div>
+  <canvas id="confetti" class="confetti" hidden></canvas>
   <div id="modal-root"></div>
   <div class="global-toast" id="global-toast" hidden></div>
 

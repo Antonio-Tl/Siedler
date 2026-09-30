@@ -7,7 +7,7 @@ import { validSettlementSpots, validRoadSpots, robberHexes, stealCandidates, RES
 const PORT = 5400 + Math.floor(Math.random() * 500);
 
 function startServer() {
-  const proc = spawn(process.execPath, ['server/index.js'], { env: { ...process.env, PORT: String(PORT), BOT_DELAY_SCALE: '0.02' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const proc = spawn(process.execPath, ['server/index.js'], { env: { ...process.env, PORT: String(PORT), BOT_DELAY_SCALE: '0.02', PERSIST: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
   return new Promise((resolve, reject) => {
     proc.stdout.on('data', (d) => { if (String(d).includes('läuft')) resolve(proc); });
     proc.on('error', reject);

@@ -1,7 +1,7 @@
 {
-  "name": "siedlungen",
+  "name": "siedler",
   "version": "1.0.0",
-  "description": "3D-Catan-Nachbau mit Online-Multiplayer und Bots",
+  "description": "3D-Inselspiel im Browser mit Online-Multiplayer, Hot-Seat, KI-Gegnern und Hologramm-Bauvorschau",
   "type": "module",
   "main": "server/index.js",
   "scripts": {
@@ -18,5 +18,9 @@
     "express": "^4.22.3",
     "three": "^0.186.1",
     "ws": "^8.22.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Antonio-Tl/Siedler.git"
   }
 }
