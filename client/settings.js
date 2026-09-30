@@ -2,8 +2,12 @@
 
 const KEY = 'siedlungen.settings';
 
+// Touch-Geräte (Handy, Tablet) starten mit „Hoch“, Rechner mit „Ultra“
+const TOUCH = !!window.matchMedia?.('(pointer: coarse)').matches;
+
 const DEFAULTS = {
-  quality: 'high', // high | medium | low
+  quality: TOUCH ? 'high' : 'ultra', // ultra | high | medium | low
+  qualityRev: 2, // Stand der Grafikstufen (2 = mit „Ultra“)
   sound: true,
   volume: 0.7,
   ambience: true, // Meeresrauschen
@@ -20,6 +24,11 @@ let current = { ...DEFAULTS };
 try {
   const saved = JSON.parse(localStorage.getItem(KEY) || '{}');
   current = { ...DEFAULTS, ...saved };
+  // Früherer Standard „Hoch“ wird einmalig auf die neue Stufe „Ultra“ gehoben
+  if ((saved.qualityRev || 1) < 2) {
+    if (!saved.quality || saved.quality === 'high') current.quality = DEFAULTS.quality;
+    current.qualityRev = 2;
+  }
   // Übernahme der alten Ton-Einstellung
   if (localStorage.getItem('siedlungen.sound') === 'off' && saved.sound === undefined) current.sound = false;
 } catch { /* ignorieren */ }

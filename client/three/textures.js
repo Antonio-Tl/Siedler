@@ -35,198 +35,6 @@ export const TERRAIN_COLORS = {
   forest: '#4a7536', pasture: '#8cc157', fields: '#dcb04a', hills: '#c0603f', mountains: '#9b9d9b', desert: '#e7d4a2',
 };
 
-function speckle(ctx, s, rnd, base, n, rMax, spread = 0.35, alpha = [0.3, 0.7]) {
-  for (let i = 0; i < n; i++) {
-    ctx.fillStyle = shade(base, (rnd() - 0.5) * spread);
-    ctx.globalAlpha = alpha[0] + rnd() * (alpha[1] - alpha[0]);
-    ctx.beginPath();
-    ctx.arc(rnd() * s, rnd() * s, 0.6 + rnd() * rMax, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.globalAlpha = 1;
-}
-
-export function terrainTexture(terrain, seed) {
-  const base = TERRAIN_COLORS[terrain];
-  const rnd = mulberry(seed);
-  return canvasTex(512, (ctx, s) => {
-    const grad = ctx.createRadialGradient(s / 2, s / 2, s * 0.1, s / 2, s / 2, s * 0.7);
-    grad.addColorStop(0, shade(base, 0.08));
-    grad.addColorStop(1, shade(base, -0.12));
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, s, s);
-    // große, weiche Farbflecken
-    for (let i = 0; i < 26; i++) {
-      const x = rnd() * s;
-      const y = rnd() * s;
-      const r = 30 + rnd() * 90;
-      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-      const col = new THREE.Color(shade(base, (rnd() - 0.5) * 0.3));
-      g.addColorStop(0, `rgba(${col.r * 255 | 0},${col.g * 255 | 0},${col.b * 255 | 0},0.45)`);
-      g.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = g;
-      ctx.fillRect(x - r, y - r, r * 2, r * 2);
-    }
-    switch (terrain) {
-      case 'fields': {
-        // Ährenreihen
-        ctx.lineCap = 'round';
-        for (let row = -s; row < s * 2; row += 13) {
-          for (let x = -20; x < s + 20; x += 4) {
-            const y = row + x * 0.35 + (rnd() - 0.5) * 3;
-            ctx.strokeStyle = shade(base, (rnd() - 0.3) * 0.35);
-            ctx.globalAlpha = 0.55 + rnd() * 0.4;
-            ctx.lineWidth = 1.5 + rnd();
-            ctx.beginPath();
-            ctx.moveTo(x, y);
-            ctx.lineTo(x + (rnd() - 0.5) * 3, y - 5 - rnd() * 4);
-            ctx.stroke();
-          }
-          ctx.globalAlpha = 0.35;
-          ctx.strokeStyle = shade(base, -0.35);
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.moveTo(-20, row + 5 - 7);
-          ctx.lineTo(s + 20, row + 5 + (s + 40) * 0.35 - 7);
-          ctx.stroke();
-        }
-        ctx.globalAlpha = 1;
-        break;
-      }
-      case 'pasture': {
-        for (let i = 0; i < 2600; i++) {
-          const x = rnd() * s;
-          const y = rnd() * s;
-          ctx.strokeStyle = shade(base, (rnd() - 0.45) * 0.45);
-          ctx.globalAlpha = 0.5 + rnd() * 0.5;
-          ctx.lineWidth = 1 + rnd();
-          ctx.beginPath();
-          ctx.moveTo(x, y);
-          ctx.lineTo(x + (rnd() - 0.5) * 4, y - 3 - rnd() * 5);
-          ctx.stroke();
-        }
-        ctx.globalAlpha = 1;
-        for (let i = 0; i < 70; i++) {
-          ctx.fillStyle = ['#fff7e0', '#f6e27a', '#f2c9d8'][Math.floor(rnd() * 3)];
-          ctx.beginPath();
-          ctx.arc(rnd() * s, rnd() * s, 1.5 + rnd() * 1.5, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        break;
-      }
-      case 'forest': {
-        speckle(ctx, s, rnd, base, 2200, 4, 0.5);
-        // Moos und Waldboden
-        for (let i = 0; i < 40; i++) {
-          ctx.fillStyle = rnd() > 0.5 ? '#2f4f25' : '#5d7a3a';
-          ctx.globalAlpha = 0.35;
-          ctx.beginPath();
-          ctx.ellipse(rnd() * s, rnd() * s, 10 + rnd() * 26, 6 + rnd() * 16, rnd() * 3, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        ctx.globalAlpha = 1;
-        break;
-      }
-      case 'hills': {
-        speckle(ctx, s, rnd, base, 1400, 3, 0.4);
-        // Risse im Lehm
-        ctx.strokeStyle = shade(base, -0.4);
-        ctx.lineWidth = 1.6;
-        ctx.globalAlpha = 0.55;
-        for (let i = 0; i < 40; i++) {
-          let x = rnd() * s;
-          let y = rnd() * s;
-          ctx.beginPath();
-          ctx.moveTo(x, y);
-          for (let k = 0; k < 5; k++) {
-            x += (rnd() - 0.5) * 34;
-            y += (rnd() - 0.5) * 34;
-            ctx.lineTo(x, y);
-          }
-          ctx.stroke();
-        }
-        ctx.globalAlpha = 0.4;
-        for (let i = 0; i < 22; i++) {
-          ctx.fillStyle = shade(base, -0.25);
-          ctx.beginPath();
-          ctx.ellipse(rnd() * s, rnd() * s, 8 + rnd() * 16, 5 + rnd() * 9, rnd() * 3, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        ctx.globalAlpha = 1;
-        break;
-      }
-      case 'mountains': {
-        for (let i = 0; i < 140; i++) {
-          const x = rnd() * s;
-          const y = rnd() * s;
-          const r = 6 + rnd() * 22;
-          ctx.fillStyle = shade(base, (rnd() - 0.5) * 0.4);
-          ctx.strokeStyle = shade(base, -0.4);
-          ctx.lineWidth = 1.2;
-          ctx.globalAlpha = 0.6;
-          ctx.beginPath();
-          const n = 5 + Math.floor(rnd() * 3);
-          for (let k = 0; k < n; k++) {
-            const a = (k / n) * Math.PI * 2;
-            const rr = r * (0.7 + rnd() * 0.4);
-            ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr * 0.8);
-          }
-          ctx.closePath();
-          ctx.fill();
-          ctx.stroke();
-        }
-        ctx.globalAlpha = 1;
-        speckle(ctx, s, rnd, base, 1400, 2, 0.6);
-        break;
-      }
-      case 'desert': {
-        speckle(ctx, s, rnd, base, 900, 2, 0.25);
-        ctx.strokeStyle = shade(base, -0.14);
-        ctx.lineWidth = 2;
-        for (let y = 6; y < s; y += 18) {
-          ctx.globalAlpha = 0.5;
-          ctx.beginPath();
-          for (let x = 0; x <= s; x += 6) ctx.lineTo(x, y + Math.sin(x / 26 + y * 0.7) * 6 + Math.sin(x / 9) * 1.5);
-          ctx.stroke();
-        }
-        ctx.globalAlpha = 1;
-        break;
-      }
-      default:
-    }
-  });
-}
-
-export function rockTexture() {
-  const rnd = mulberry(77);
-  const tex = canvasTex(512, (ctx, w, h) => {
-    const g = ctx.createLinearGradient(0, 0, 0, h);
-    g.addColorStop(0, '#6b5540');
-    g.addColorStop(0.25, '#54412f');
-    g.addColorStop(1, '#2a2019');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, w, h);
-    // Gesteinsschichten
-    for (let y = 10; y < h; y += 10 + rnd() * 16) {
-      ctx.strokeStyle = `rgba(20,14,8,${0.3 + rnd() * 0.3})`;
-      ctx.lineWidth = 1 + rnd() * 2;
-      ctx.beginPath();
-      for (let x = 0; x <= w; x += 16) ctx.lineTo(x, y + (rnd() - 0.5) * 5);
-      ctx.stroke();
-    }
-    for (let i = 0; i < 260; i++) {
-      ctx.fillStyle = `rgba(${140 + rnd() * 60},${120 + rnd() * 50},${95 + rnd() * 40},${0.12 + rnd() * 0.2})`;
-      ctx.fillRect(rnd() * w, rnd() * h, 4 + rnd() * 18, 2 + rnd() * 6);
-    }
-    // Grasnarbe oben
-    ctx.fillStyle = 'rgba(70,95,45,0.8)';
-    for (let x = 0; x < w; x += 3) ctx.fillRect(x, 0, 3, 4 + rnd() * 7);
-  }, { h: 256 });
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.repeat.set(3, 1);
-  return tex;
-}
-
 export function woodTexture(base = '#6b4527') {
   const rnd = mulberry(5);
   const tex = canvasTex(256, (ctx, s) => {
@@ -252,67 +60,218 @@ export function woodTexture(base = '#6b4527') {
   return tex;
 }
 
-export function tokenTexture(n) {
-  return canvasTex(256, (ctx, s) => {
+// Schriften für Chips und Hafenschilder: Texturen werden neu gezeichnet, sobald die Webfonts geladen sind.
+const lateTextures = [];
+export const fontsReady = (document.fonts
+  ? Promise.all(['800 100px Spectral', '700 60px Spectral', '700 60px "Cormorant Garamond"', '600 30px Inter'].map((f) => document.fonts.load(f)))
+  : Promise.resolve()
+).catch(() => {}).then(() => {
+  for (const [tex, draw] of lateTextures) {
+    const ctx = tex.image.getContext('2d');
+    ctx.clearRect(0, 0, tex.image.width, tex.image.height);
+    draw(ctx, tex.image.width, tex.image.height);
+    tex.needsUpdate = true;
+  }
+  lateTextures.length = 0;
+});
+let fontsLoaded = false;
+fontsReady.then(() => { fontsLoaded = true; });
+
+function fontTex(size, draw) {
+  const tex = canvasTex(size, draw);
+  tex.anisotropy = 16;
+  if (!fontsLoaded) lateTextures.push([tex, draw]);
+  return tex;
+}
+
+const NUM_FONT = 'Spectral, "Cormorant Garamond", Georgia, serif';
+
+// Elfenbein-Scheibe mit Papierkorn und doppeltem Ring (Zahlenchips und Hafenschilder)
+function ivoryDisc(ctx, s, seed, { ring = '#7d5a2e', inner = 'rgba(110,80,40,.5)' } = {}) {
+  const c = s / 2;
+  const u = s / 512;
+  const g = ctx.createRadialGradient(c * 0.82, c * 0.72, s * 0.04, c, c, c);
+  g.addColorStop(0, '#fbf2da');
+  g.addColorStop(0.6, '#f2e3c0');
+  g.addColorStop(0.9, '#e3cc9a');
+  g.addColorStop(1, '#cfb07a');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(c, c, c - 2 * u, 0, Math.PI * 2);
+  ctx.fill();
+  const rnd = mulberry(seed);
+  for (let i = 0; i < 1400; i++) {
+    const a = rnd() * Math.PI * 2;
+    const r = Math.sqrt(rnd()) * (c - 14 * u);
+    ctx.fillStyle = rnd() < 0.5 ? 'rgba(150,115,60,0.10)' : 'rgba(255,255,255,0.35)';
+    ctx.fillRect(c + Math.cos(a) * r, c + Math.sin(a) * r, 1.6 * u, 1.6 * u);
+  }
+  ctx.lineWidth = 11 * u;
+  ctx.strokeStyle = ring;
+  ctx.beginPath();
+  ctx.arc(c, c, c - 8 * u, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.lineWidth = 3 * u;
+  ctx.strokeStyle = 'rgba(255,240,205,.8)';
+  ctx.beginPath();
+  ctx.arc(c, c, c - 15 * u, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.lineWidth = 2.5 * u;
+  ctx.strokeStyle = inner;
+  ctx.beginPath();
+  ctx.arc(c, c, c - 30 * u, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+// Geprägter Text: heller Versatz unten, dunkler Kern
+function embossText(ctx, text, x, y, color, u) {
+  ctx.fillStyle = 'rgba(255,250,235,0.9)';
+  ctx.fillText(text, x, y + 3 * u);
+  ctx.fillStyle = 'rgba(60,35,10,0.35)';
+  ctx.fillText(text, x, y - 1.5 * u);
+  ctx.fillStyle = color;
+  ctx.fillText(text, x, y);
+}
+
+export function tokenTexture(n, size = 512) {
+  const draw = (ctx, s) => {
     const c = s / 2;
-    const grad = ctx.createRadialGradient(c * 0.85, c * 0.75, 10, c, c, c);
-    grad.addColorStop(0, '#fdf6e2');
-    grad.addColorStop(0.8, '#efdfb9');
-    grad.addColorStop(1, '#d9c190');
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.arc(c, c, c - 3, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.lineWidth = 8;
-    ctx.strokeStyle = '#b8995e';
-    ctx.stroke();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = 'rgba(110,86,52,.6)';
-    ctx.beginPath();
-    ctx.arc(c, c, c - 16, 0, Math.PI * 2);
-    ctx.stroke();
+    const u = s / 512;
+    ivoryDisc(ctx, s, n * 131);
     const red = n === 6 || n === 8;
-    ctx.fillStyle = red ? '#a3261c' : '#2e2519';
-    ctx.font = `700 ${red ? 140 : 128}px "Cormorant Garamond", Georgia, serif`;
+    const col = red ? '#a8231a' : '#2a1d10';
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(String(n), c, c - 10);
+    ctx.textBaseline = 'alphabetic';
+    ctx.font = `800 ${(n >= 10 ? 238 : 276) * u}px ${NUM_FONT}`;
+    const m = ctx.measureText(String(n));
+    const capH = (m.actualBoundingBoxAscent || 170 * u);
+    const base = c + capH / 2 - 24 * u;
+    embossText(ctx, String(n), c, base, col, u);
     const pips = { 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 8: 5, 9: 4, 10: 3, 11: 2, 12: 1 }[n];
+    ctx.fillStyle = col;
     for (let i = 0; i < pips; i++) {
+      const x = c + (i - (pips - 1) / 2) * 34 * u;
+      const y = base + 50 * u;
+      ctx.fillStyle = 'rgba(255,250,235,0.9)';
       ctx.beginPath();
-      ctx.arc(c + (i - (pips - 1) / 2) * 17, c + 66, 6, 0, Math.PI * 2);
+      ctx.arc(x, y + 2.5 * u, 11.5 * u, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.arc(x, y, 11.5 * u, 0, Math.PI * 2);
       ctx.fill();
     }
-  });
+  };
+  return fontTex(size, draw);
 }
 
 const HARBOR_LABEL = { any: 'ALLES', wood: 'HOLZ', brick: 'LEHM', sheep: 'WOLLE', wheat: 'GETREIDE', ore: 'ERZ' };
 
-export function harborTexture(type, image) {
-  return canvasTex(256, (ctx, s) => {
+export function harborTexture(type, image, size = 512) {
+  const draw = (ctx, s) => {
     const c = s / 2;
-    const grad = ctx.createRadialGradient(c * 0.8, c * 0.7, 10, c, c, c);
-    grad.addColorStop(0, '#fbf2dc');
-    grad.addColorStop(1, '#e2cc9c');
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.arc(c, c, c - 8, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.lineWidth = 9;
-    ctx.strokeStyle = '#7a5530';
-    ctx.stroke();
-    ctx.fillStyle = '#3b2a18';
+    const u = s / 512;
+    ctx.fillStyle = '#d9bf8a';
+    ctx.fillRect(0, 0, s, s);
+    ivoryDisc(ctx, s, type.length * 17, { ring: '#5e3d1d' });
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.font = '700 70px "Cormorant Garamond", Georgia, serif';
-    ctx.fillText(type === 'any' ? '3:1' : '2:1', c, c - 42);
-    if (image) ctx.drawImage(image, c - 38, c - 14, 76, 76);
+    ctx.textBaseline = 'alphabetic';
+    ctx.font = `800 ${150 * u}px ${NUM_FONT}`;
+    embossText(ctx, type === 'any' ? '3:1' : '2:1', c, c - 30 * u, '#2a1d10', u);
+    if (image) ctx.drawImage(image, c - 68 * u, c - 22 * u, 136 * u, 136 * u);
     else {
-      ctx.font = '60px sans-serif';
-      ctx.fillText('⚓', c, c + 24);
+      // Anker
+      ctx.strokeStyle = '#3b2a18';
+      ctx.lineWidth = 11 * u;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(c, c - 14 * u);
+      ctx.lineTo(c, c + 78 * u);
+      ctx.moveTo(c - 34 * u, c + 8 * u);
+      ctx.lineTo(c + 34 * u, c + 8 * u);
+      ctx.moveTo(c - 50 * u, c + 46 * u);
+      ctx.quadraticCurveTo(c - 44 * u, c + 86 * u, c, c + 80 * u);
+      ctx.quadraticCurveTo(c + 44 * u, c + 86 * u, c + 50 * u, c + 46 * u);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(c, c - 26 * u, 12 * u, 0, Math.PI * 2);
+      ctx.stroke();
     }
-    ctx.font = '600 24px Inter, sans-serif';
-    ctx.fillText(HARBOR_LABEL[type], c, c + 82);
+    ctx.font = `700 ${34 * u}px Inter, sans-serif`;
+    if ('letterSpacing' in ctx) ctx.letterSpacing = `${3 * u}px`;
+    ctx.fillStyle = '#4a3218';
+    ctx.fillText(HARBOR_LABEL[type], c, c + 150 * u);
+  };
+  return fontTex(size, draw);
+}
+
+// Dachziegel (hell, wird mit der Spielerfarbe eingefärbt)
+export function shingleTexture() {
+  const rnd = mulberry(8);
+  const tex = canvasTex(256, (ctx, s) => {
+    ctx.fillStyle = '#d9d4cc';
+    ctx.fillRect(0, 0, s, s);
+    const rows = 8;
+    const h = s / rows;
+    for (let r = 0; r < rows; r++) {
+      const off = (r % 2) * (s / 12);
+      for (let x = -s / 6; x < s + s / 6; x += s / 6) {
+        const l = 0.8 + rnd() * 0.2;
+        const v = Math.round(255 * l);
+        const g = ctx.createLinearGradient(0, r * h, 0, (r + 1) * h);
+        g.addColorStop(0, `rgb(${v - 40},${v - 42},${v - 46})`);
+        g.addColorStop(1, `rgb(${v},${v - 2},${v - 6})`);
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.roundRect(x + off + 2, r * h + 1, s / 6 - 4, h + 4, [0, 0, 10, 10]);
+        ctx.fill();
+      }
+      ctx.fillStyle = 'rgba(40,30,25,0.45)';
+      ctx.fillRect(0, (r + 1) * h - 3, s, 3);
+    }
+  });
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+// Helle Holzmaserung zum Einfärben (Straßen, Stege)
+export function grainTexture(base = '#e6e0d6', seed = 5) {
+  const rnd = mulberry(seed);
+  const tex = canvasTex(256, (ctx, s) => {
+    ctx.fillStyle = base;
+    ctx.fillRect(0, 0, s, s);
+    for (let y = 0; y < s; y += 1.5) {
+      ctx.strokeStyle = shade(base, (rnd() - 0.55) * 0.3);
+      ctx.globalAlpha = 0.35;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      for (let x = 0; x <= s; x += 16) ctx.lineTo(x, y + Math.sin(x / 37 + y * 0.3) * 1.4);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 0.5;
+    for (let i = 0; i < 5; i++) {
+      ctx.strokeStyle = shade(base, -0.35);
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.ellipse(rnd() * s, rnd() * s, 7, 2.5, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  });
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+// Weicher Kontaktschatten unter Figuren und Chips
+export function contactShadowTexture() {
+  return canvasTex(128, (ctx, s) => {
+    const g = ctx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+    g.addColorStop(0, 'rgba(0,0,0,0.75)');
+    g.addColorStop(0.45, 'rgba(0,0,0,0.5)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, s, s);
   });
 }
 

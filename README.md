@@ -102,7 +102,7 @@ Alternativ im Cloudflare-Dashboard unter *Workers & Pages → Erstellen → Repo
 
 ### Einstellungen („An deinem Tisch“ ⚙)
 
-Grafikqualität (Hoch/Mittel/Niedrig), Klang und Lautstärke mit Klangvorschau, Meeresrauschen, Tempo der KI, Kamerafahrten (insgesamt oder einzeln für Würfel, Erträge, Räuber und Bauten), bewegte Szenerie und die Hologramm-Vorschau lassen sich jederzeit anpassen.
+Grafikqualität (Ultra/Hoch/Mittel/Niedrig – „Ultra“ mit 2048er-Geländetexturen samt Relief, weichen 4K-Schatten, Umgebungslicht und dichterer Landschaft), Klang und Lautstärke mit Klangvorschau, Meeresrauschen, Tempo der KI, Kamerafahrten (insgesamt oder einzeln für Würfel, Erträge, Räuber und Bauten), bewegte Szenerie und die Hologramm-Vorschau lassen sich jederzeit anpassen.
 
 Tipp: Ein Klick auf eine Rohstoffkarte in deiner Hand öffnet direkt den Handelstisch mit diesem Rohstoff.
 
@@ -156,7 +156,7 @@ Beispiel: `PORT=8080 ./start.command` bzw. unter Windows `set PORT=8080` und dan
 | `server/bot.js` | KI-Siedler |
 | `client/app.js` | Oberfläche, Menü, Dialoge, Handel, Tour, Kamerafahrten |
 | `client/board3d.js` | Three.js-Szene: Kamera, Figuren, Hologramme, Würfel, Effekte |
-| `client/three/` | Texturen, 3D-Modelle (Figuren, Räuber, Deko, Häfen) und Wasser |
+| `client/three/` | Texturen, handgemalte Gelände mit Normal-Maps (`terrain.js`), 3D-Modelle (Figuren, Räuber, Deko, Häfen) und Wasser |
 | `client/art.js` | SVG-Grafiken: Rohstoffe, Porträts, Icons, Illustrationen |
 | `test/` | automatisierte Tests |
 
@@ -171,7 +171,7 @@ Der Server ist autoritativ: Alle Spielzüge werden dort geprüft, jeder Spieler 
 | „Node.js wurde nicht gefunden“ | Node.js von <https://nodejs.org> installieren und die Startdatei erneut öffnen. |
 | „Port schon belegt“ | Ein anderes Programm nutzt Port 5274 – mit `PORT=8080 ./start.command` einen anderen Port wählen. |
 | Mitspieler kommen nicht rein | Gleiches WLAN? Firewall-Abfrage beim Start erlaubt? Für Internet-Spiele Port freigeben oder Tunnel nutzen. |
-| Spiel ruckelt | Unter ⚙ die Grafikqualität auf „Mittel“ oder „Niedrig“ stellen und ggf. die bewegte Szenerie abschalten. |
+| Spiel ruckelt | Unter ⚙ die Grafikqualität auf „Hoch“, „Mittel“ oder „Niedrig“ stellen und ggf. die bewegte Szenerie abschalten. |
 
 ---
 

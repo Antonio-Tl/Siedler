@@ -1,21 +1,28 @@
 // 3D-Spielbrett: Szene, Kamera, Figuren, Ziele, Hologramm-Vorschau, Würfel, Kamerafahrten und Effekte.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
-  canvasTex, terrainTexture, rockTexture, tokenTexture, harborTexture, glowTexture, ringTexture, shoreMask, shade, TERRAIN_COLORS,
+  canvasTex, tokenTexture, harborTexture, glowTexture, ringTexture, shoreMask, shade, TERRAIN_COLORS,
 } from './three/textures.js';
+import { paintTerrain, paintCliff } from './three/terrain.js';
 import {
   SURF, SLAB, TOP, WATER_Y, makeSettlement, makeCity, makeRoad, makeRobber, makeHologram, buildDecor, hexRimGeometry,
-  makeDock, makeBoat, makeDiceTray, makeDie, FACE_EULER,
+  makeDock, makeBoat, makeDiceTray, makeDie, makeToken, FACE_EULER,
 } from './three/models.js';
 import { createWater, createClouds } from './three/water.js';
 import { resourceImage } from './art.js';
 
+// tex: Kantenlänge der Geländetexturen, env: Umgebungslicht (Glanz auf Holz, Chips, Dächern)
 const QUALITY = {
-  high: { pixelRatio: 2, shadows: 2048, density: 1, clouds: true },
-  medium: { pixelRatio: 1.5, shadows: 1024, density: 0.75, clouds: true },
-  low: { pixelRatio: 1, shadows: 0, density: 0.5, clouds: false },
+  ultra: { pixelRatio: 3, shadows: 4096, density: 1.3, clouds: true, tex: 2048, env: true },
+  high: { pixelRatio: 2, shadows: 2048, density: 1, clouds: true, tex: 1024, env: false },
+  medium: { pixelRatio: 1.5, shadows: 1024, density: 0.75, clouds: true, tex: 1024, env: false },
+  low: { pixelRatio: 1, shadows: 0, density: 0.5, clouds: false, tex: 512, env: false },
 };
+const TERRAINS = ['fields', 'pasture', 'forest', 'hills', 'mountains', 'desert'];
+const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
 
 const easeOutCubic = (t) => 1 - (1 - t) ** 3;
 const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
@@ -49,9 +56,10 @@ export class Board3D {
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.08;
+    this.maxAniso = renderer.capabilities.getMaxAnisotropy();
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.appendChild(renderer.domElement);
     this.renderer = renderer;
@@ -85,16 +93,25 @@ export class Board3D {
     controls.update();
     this.controls = controls;
 
-    scene.add(new THREE.HemisphereLight('#fff4de', '#2f5750', 1.2));
-    const sun = new THREE.DirectionalLight('#fff0d2', 2.5);
+    // Sanftes Umgebungslicht für Glanzlichter auf Holz, Chips und Dächern
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    this.envMap = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    scene.environmentIntensity = 0.32;
+    pmrem.dispose();
+    this.hemi = new THREE.HemisphereLight('#fff4de', '#2f5750', 0.95);
+    scene.add(this.hemi);
+    const sun = new THREE.DirectionalLight('#fff0d2', 2.6);
     sun.position.set(5, 10, 3.5);
     sun.castShadow = true;
-    sun.shadow.camera.left = -8;
-    sun.shadow.camera.right = 8;
-    sun.shadow.camera.top = 8;
-    sun.shadow.camera.bottom = -8;
-    sun.shadow.bias = -0.0005;
-    sun.shadow.normalBias = 0.02;
+    sun.shadow.camera.left = -7.5;
+    sun.shadow.camera.right = 7.5;
+    sun.shadow.camera.top = 7.5;
+    sun.shadow.camera.bottom = -7.5;
+    sun.shadow.camera.near = 2;
+    sun.shadow.camera.far = 24;
+    sun.shadow.bias = -0.0004;
+    sun.shadow.normalBias = 0.015;
+    sun.shadow.radius = 3;
     scene.add(sun);
     this.sun = sun;
 
@@ -136,21 +153,25 @@ export class Board3D {
 
   setQuality(name) {
     const q = QUALITY[name] || QUALITY.high;
-    const changedDensity = this.quality && this.quality.density !== q.density;
+    const prev = this.quality;
     this.quality = q;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, q.pixelRatio));
     this.renderer.shadowMap.enabled = q.shadows > 0;
     this.sun.castShadow = q.shadows > 0;
     if (q.shadows) {
       this.sun.shadow.mapSize.set(q.shadows, q.shadows);
+      this.sun.shadow.radius = q.shadows >= 4096 ? 4 : 3;
       if (this.sun.shadow.map) { this.sun.shadow.map.dispose(); this.sun.shadow.map = null; }
     }
     this.clouds.visible = q.clouds;
+    this.scene.environment = q.env ? this.envMap : null;
+    this.hemi.intensity = q.env ? 0.95 : 1.15;
     this.scene.traverse((o) => {
       if (!o.material) return;
       for (const m of [].concat(o.material)) m.needsUpdate = true;
     });
-    if (changedDensity && this.board) this.rebuildDecor();
+    if (prev && prev.density !== q.density && this.board) this.rebuildDecor();
+    if (prev && prev.tex !== q.tex && this.board) this.applyTerrainTextures();
     this.resize();
   }
 
@@ -264,56 +285,68 @@ export class Board3D {
 
     this.water.userData.uniforms.uShore.value = shoreMask(state.board);
 
-    const rockMat = new THREE.MeshStandardMaterial({ map: rockTexture(), roughness: 0.95 });
+    const cliff = paintCliff(this.quality.tex >= 2048 ? 2048 : 1024, { anisotropy: this.maxAniso });
+    const rockMat = new THREE.MeshStandardMaterial({ map: cliff.map, normalMap: cliff.normalMap, normalScale: new THREE.Vector2(1.2, 1.2), roughness: 0.95 });
     const rockGeo = new THREE.CylinderGeometry(1.0, 1.07, 0.72, 6, 1, true);
     rockGeo.translate(0, TOP - 0.36, 0);
     const slabGeo = new THREE.CylinderGeometry(0.95, 0.97, SLAB, 6);
     slabGeo.translate(0, TOP + SLAB / 2, 0);
     const rimGeo = hexRimGeometry();
-    const rimMat = new THREE.MeshStandardMaterial({ color: '#ead7a2', roughness: 0.45, metalness: 0.2 });
+    const rimMat = new THREE.MeshStandardMaterial({ color: '#ecdcaf', roughness: 0.42, metalness: 0.15 });
     const glowGeo = new THREE.CircleGeometry(0.93, 6, Math.PI / 2);
     glowGeo.rotateX(-Math.PI / 2);
+    const tokenTex = {};
+    const sideMats = {};
+    const rockParts = [];
+    const rimParts = [];
+    this.slabTops = [];
 
     for (const h of state.board.hexes) {
       const g = new THREE.Group();
       g.position.set(h.x, 0, h.y);
-      const rockMesh = new THREE.Mesh(rockGeo, rockMat);
-      rockMesh.receiveShadow = true;
-      rockMesh.castShadow = true;
+      rockParts.push(rockGeo.clone().translate(h.x, 0, h.y));
+      rimParts.push(rimGeo.clone().translate(h.x, SURF - 0.004, h.y));
       const color = TERRAIN_COLORS[h.terrain];
+      // Bis die gemalte Textur fertig ist, trägt das Feld seine Grundfarbe
+      const tint = new THREE.Color('#ffffff').offsetHSL(0, 0, ((h.id * 37) % 11 - 5) * 0.008);
+      const top = new THREE.MeshStandardMaterial({ color, roughness: 0.9 });
+      top.userData = { terrain: h.terrain, tint };
+      // Die Unterseite liegt auf dem Fels und bekommt kein Material (spart einen Draw-Call je Feld)
       const slab = new THREE.Mesh(slabGeo, [
-        new THREE.MeshStandardMaterial({ color: shade(color, -0.3), roughness: 0.9 }),
-        new THREE.MeshStandardMaterial({ map: terrainTexture(h.terrain, h.id * 17 + 3), roughness: 0.92 }),
-        new THREE.MeshStandardMaterial({ color: shade(color, -0.4) }),
+        sideMats[h.terrain] ||= new THREE.MeshStandardMaterial({ color: shade(color, -0.3), roughness: 0.9 }),
+        top,
       ]);
+      // Gleiche Geländearten drehen ihre Textur, damit Nachbarn nicht identisch aussehen
+      slab.rotation.y = ((h.id * 5 + h.q * 2) % 6) * (Math.PI / 3);
       slab.receiveShadow = true;
       slab.userData = { kind: 'hex', id: h.id };
-      const rim = new THREE.Mesh(rimGeo, rimMat);
-      rim.position.y = SURF - 0.004;
-      rim.receiveShadow = true;
+      this.slabTops.push(top);
       const glow = new THREE.Mesh(glowGeo, new THREE.MeshBasicMaterial({ color: '#fff3c4', transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
       glow.position.y = SURF + 0.004;
       glow.userData = { target: 0, color: new THREE.Color('#fff3c4') };
-      g.add(rockMesh, slab, rim, glow);
+      glow.visible = false;
+      g.add(slab, glow);
       this.hexTiles.push(slab);
       this.hexGlow[h.id] = glow;
 
       if (h.number) {
-        const token = new THREE.Group();
-        const disc = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.27, 0.285, 0.045, 40),
-          [new THREE.MeshStandardMaterial({ color: '#b8995e', roughness: 0.5 }), new THREE.MeshStandardMaterial({ map: tokenTexture(h.number), roughness: 0.55 }), new THREE.MeshStandardMaterial({ color: '#8a6d3e' })],
-        );
-        disc.rotation.y = Math.PI / 2; // Deckel-UVs drehen, damit die Zahl zur Kamera zeigt
-        disc.castShadow = true;
-        disc.receiveShadow = true;
-        token.add(disc);
-        token.position.y = SURF + 0.03;
+        tokenTex[h.number] ||= tokenTexture(h.number, this.quality.tex >= 2048 ? 1024 : 512);
+        const token = makeToken(tokenTex[h.number]);
+        token.position.y = SURF + 0.002;
         g.add(token);
         this.tokens[h.id] = token;
       }
       this.island.add(g);
     }
+    // Klippen und Rahmen aller Felder als je ein Mesh
+    const rocks = new THREE.Mesh(mergeGeometries(rockParts), rockMat);
+    rocks.receiveShadow = true;
+    rocks.castShadow = true;
+    const rims = new THREE.Mesh(mergeGeometries(rimParts), rimMat);
+    rims.receiveShadow = true;
+    rims.castShadow = true;
+    this.island.add(rocks, rims);
+    this.applyTerrainTextures();
     this.rebuildDecor();
 
     // Häfen mit Stegen und Schildern
@@ -323,10 +356,11 @@ export class Board3D {
       this.harborLabels.push(dock.userData.label);
       this.island.add(dock);
       if (hb.type !== 'any') {
-        resourceImage(hb.type).then((img) => {
+        resourceImage(hb.type, 160).then((img) => {
           if (!img) return;
-          dock.userData.label.material.map = harborTexture(hb.type, img);
-          dock.userData.label.material.needsUpdate = true;
+          const { face } = dock.userData.label.userData;
+          face.material.map = harborTexture(hb.type, img);
+          face.material.needsUpdate = true;
         });
       }
     }
@@ -335,6 +369,27 @@ export class Board3D {
     this.robber = makeRobber();
     this.robberHex = null;
     this.island.add(this.robber);
+  }
+
+  // Gemalte Geländetexturen nacheinander erzeugen (je Art ein Bild), damit die Oberfläche flüssig bleibt
+  async applyTerrainTextures() {
+    const job = (this.texJob = (this.texJob || 0) + 1);
+    const size = this.quality.tex;
+    const needed = TERRAINS.filter((t) => this.slabTops.some((m) => m.userData.terrain === t));
+    for (const terrain of needed) {
+      await nextFrame();
+      if (job !== this.texJob) return;
+      const set = paintTerrain(terrain, size, { normalSize: Math.min(1024, size / 2), anisotropy: this.maxAniso });
+      for (const m of this.slabTops) {
+        if (m.userData.terrain !== terrain) continue;
+        m.map = set.map;
+        m.normalMap = set.normalMap;
+        m.normalScale.set(1, 1);
+        m.color.copy(m.userData.tint);
+        m.roughness = terrain === 'mountains' ? 0.8 : 0.92;
+        m.needsUpdate = true;
+      }
+    }
   }
 
   rebuildDecor() {
@@ -395,7 +450,7 @@ export class Board3D {
     }
     if (this.robberHex !== state.robber) {
       const h = this.board.hexes[state.robber];
-      const to = new THREE.Vector3(h.x - 0.4, SURF, h.y + 0.14);
+      const to = new THREE.Vector3(h.x - 0.5, SURF, h.y + 0.12);
       if (animate && this.robberHex !== null) this.hopRobber(to);
       else this.robber.position.copy(to);
       this.robberHex = state.robber;
@@ -410,7 +465,9 @@ export class Board3D {
   }
 
   removePiece(mesh, animate) {
-    this.flags = this.flags.filter((f) => !mesh.children.includes(f));
+    const own = new Set();
+    mesh.traverse((o) => own.add(o));
+    this.flags = this.flags.filter((f) => !own.has(f));
     if (!animate) { this.pieceGroup.remove(mesh); return; }
     const start = performance.now();
     this.anims.push((now) => {
@@ -546,7 +603,7 @@ export class Board3D {
     const start = performance.now();
     this.anims.push((now) => {
       const t = Math.min(1, (now - start) / 900);
-      tok.position.y = SURF + 0.03 + Math.sin(t * Math.PI) * 0.18;
+      tok.position.y = SURF + 0.002 + Math.sin(t * Math.PI) * 0.18;
       tok.rotation.y = easeInOut(t) * Math.PI * 2;
       return t < 1;
     });
@@ -999,7 +1056,8 @@ export class Board3D {
     // Draufsicht: ganze Insel samt Häfen in Höhe und Breite
     const halfV = (this.camera.fov * Math.PI) / 360;
     this.topDist = Math.max(5.9 / Math.tan(halfV), 6.1 / Math.tan(halfH));
-    const dir = new THREE.Vector3(0, 8.6, 7.05).normalize();
+    // Etwas steiler als früher: Chips und Figuren bleiben aus der Grundansicht gut lesbar
+    const dir = new THREE.Vector3(0, 8.9, 5.7).normalize();
     this.homePos = dir.multiplyScalar(dist).add(this.homeTarget);
     this.controls.maxDistance = Math.max(17, dist + 3, this.topDist + 1);
     if (!this.userMoved && !this.camAnim && !this.orbiting) {
@@ -1076,6 +1134,7 @@ export class Board3D {
         g.material.opacity += (g.userData.target - g.material.opacity) * 0.12;
         if (g.material.opacity < 0.002) g.material.opacity = 0;
       }
+      g.visible = g.material.opacity > 0;
     }
     if (this.focusRing) {
       const k = 1 + Math.sin(time * 3) * 0.05;
@@ -1083,6 +1142,7 @@ export class Board3D {
       this.focusRing.scale.set(b * 2.4 * k, b * 1.9 * k, 1);
     }
     if (this.robber) this.robber.rotation.y = Math.sin(time * 0.6) * 0.35;
+    for (const l of this.harborLabels || []) l.quaternion.copy(this.camera.quaternion);
 
     this.controls.update();
     if (this.onCamera) this.onCamera();

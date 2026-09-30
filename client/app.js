@@ -1787,7 +1787,7 @@ function openSettings() {
     <div class="settings-grid">
       <section><h3>🏞️ Die Ansicht</h3><p class="hint">Wie fein die Insel gezeichnet wird.</p>
         <label class="mini">Grafikqualität
-          <select id="set-quality"><option value="high">Hoch – Schatten & volle Details</option><option value="medium">Mittel</option><option value="low">Niedrig – für schwächere Geräte</option></select></label>
+          <select id="set-quality"><option value="ultra">Ultra – feinste Texturen, weiche Schatten & Tiefe</option><option value="high">Hoch – Schatten & volle Details</option><option value="medium">Mittel</option><option value="low">Niedrig – für schwächere Geräte</option></select></label>
         ${toggleHtml('set-holo', settings.holograms, 'Bauvorschau als Hologramme')}
       </section>
       <section><h3>🎻 Der Klang</h3><p class="hint">Würfel, Pergament, Holz, Stein und warme Glocken.</p>

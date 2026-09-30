@@ -28,7 +28,7 @@ function waterNormalMap() {
     ctx.putImageData(img, 0, 0);
   }, { srgb: false });
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(16, 16);
+  tex.repeat.set(11, 11);
   return tex;
 }
 
@@ -41,7 +41,7 @@ export function createWater() {
     uCalm: { value: 0 },
   };
   const mat = new THREE.MeshStandardMaterial({
-    color: '#1f8a86', roughness: 0.38, metalness: 0.02, normalMap, normalScale: new THREE.Vector2(0.22, 0.22),
+    color: '#1f8a86', roughness: 0.58, metalness: 0.02, normalMap, normalScale: new THREE.Vector2(0.09, 0.09),
   });
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
@@ -67,11 +67,11 @@ export function createWater() {
         col = mix(col, shallow, smoothstep(0.62, 0.95, shore));
         // Brandungswellen, die zur Küste laufen
         float band = sin(shore * 30.0 - t * 1.6 + n * 5.0);
-        float foam = smoothstep(0.9, 1.0, band) * smoothstep(0.7, 0.88, shore) * (1.0 - smoothstep(0.93, 1.0, shore)) * 0.6;
+        float foam = smoothstep(0.93, 1.0, band) * smoothstep(0.78, 0.9, shore) * (1.0 - smoothstep(0.93, 1.0, shore)) * 0.35 * smoothstep(0.35, 0.65, n);
         foam += smoothstep(0.91, 0.975, shore) * (0.45 + 0.4 * n);
         col = mix(col, vec3(0.85, 0.9, 0.88), clamp(foam, 0.0, 1.0) * 0.7);
         // leichte Glanzflecken im offenen Wasser
-        float glint = smoothstep(0.8, 0.97, vnoise(vWPos.xz * 6.0 + t * 0.6)) * (1.0 - shore) * 0.05;
+        float glint = smoothstep(0.86, 1.0, vnoise(vWPos.xz * 6.0 + t * 0.6)) * (1.0 - shore) * 0.018;
         diffuseColor.rgb = col + glint;`);
   };
   const water = new THREE.Mesh(new THREE.PlaneGeometry(90, 90, 1, 1), mat);
