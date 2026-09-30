@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Siedlungen</title>
+  <meta name="description" content="Siedlungen – ein 3D-Inselspiel mit Online-Multiplayer und Bots." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏠</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css" />
+  <script type="importmap">
+    { "imports": { "three": "/vendor/three/build/three.module.js", "three/addons/": "/vendor/three/examples/jsm/" } }
+  </script>
+</head>
+<body>
+  <!-- Startbildschirm & Lobby -->
+  <div id="menu-screen" class="screen">
+    <div class="menu-bg"></div>
+    <div class="menu-card parchment">
+      <div class="crest big">⚜</div>
+      <h1 class="title">Siedlungen</h1>
+      <p class="subtitle">Sammle Rohstoffe, handle mit deinen Nachbarn und baue dich zu zehn Siegpunkten.</p>
+
+      <div id="menu-home">
+        <label class="field">
+          <span>Dein Name</span>
+          <input id="name-input" maxlength="18" placeholder="Wie heißt du?" autocomplete="nickname" />
+        </label>
+
+        <div class="menu-options">
+          <section class="option">
+            <h3>Allein gegen Bots</h3>
+            <p>Sofort losspielen gegen computergesteuerte Siedler.</p>
+            <div class="row">
+              <label class="mini">Gegner
+                <select id="solo-bots"><option value="1">1</option><option value="2">2</option><option value="3" selected>3</option></select>
+              </label>
+              <label class="mini">Ziel
+                <select id="solo-vp"><option value="8">8 Punkte</option><option value="10" selected>10 Punkte</option><option value="12">12 Punkte</option></select>
+              </label>
+            </div>
+            <button class="btn primary" id="btn-solo">Partie starten</button>
+          </section>
+
+          <section class="option">
+            <h3>Mit Freunden online</h3>
+            <p>Erstelle einen Raum und teile den Code oder Link. Freie Plätze füllen Bots.</p>
+            <button class="btn primary" id="btn-create">Raum erstellen</button>
+            <div class="join-row">
+              <input id="code-input" maxlength="5" placeholder="CODE" autocomplete="off" />
+              <button class="btn" id="btn-join">Beitreten</button>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <div id="menu-room" hidden>
+        <div class="room-head">
+          <div>
+            <div class="eyebrow">Raumcode</div>
+            <div class="room-code" id="room-code">-----</div>
+          </div>
+          <button class="btn small" id="btn-copy-link">🔗 Einladungslink kopieren</button>
+        </div>
+        <ul class="seat-list" id="seat-list"></ul>
+        <div class="room-options" id="room-options">
+          <button class="btn small" id="btn-add-bot">+ Bot hinzufügen</button>
+          <label class="mini">Siegpunkte
+            <select id="room-vp"><option value="8">8</option><option value="10">10</option><option value="12">12</option><option value="14">14</option></select>
+          </label>
+        </div>
+        <p class="hint" id="room-hint"></p>
+        <div class="row end">
+          <button class="btn ghost" id="btn-leave-room">Verlassen</button>
+          <button class="btn primary" id="btn-start">Partie beginnen</button>
+        </div>
+      </div>
+      <div class="conn-state" id="conn-state"></div>
+    </div>
+  </div>
+
+  <!-- Spiel -->
+  <div id="game-screen" class="screen" hidden>
+    <div class="frame">
+      <header class="topbar">
+        <div class="brand"><span class="crest">⚜</span><span>Siedlungen</span></div>
+        <div class="island-name"><span class="gem">◆</span><span id="island-name">Insel</span><span class="gem">◆</span></div>
+        <div class="top-actions">
+          <span class="room-chip" id="room-chip" hidden></span>
+          <button class="btn-rules" id="btn-rules">📖 Regeln</button>
+          <button class="round-btn" id="btn-sound" title="Ton an/aus">🔊</button>
+          <button class="round-btn" id="btn-menu" title="Menü">⚙</button>
+        </div>
+      </header>
+
+      <div class="main">
+        <aside class="settlers wood-panel">
+          <h2 class="panel-title">Die Siedler</h2>
+          <ul id="player-list"></ul>
+          <div class="awards">
+            <div class="award" id="award-road"><span class="ico">🛤️</span><div><b>Längste Straße</b><small id="award-road-sub">5 Straßen nötig</small></div></div>
+            <div class="award" id="award-army"><span class="ico">⚔️</span><div><b>Größte Rittermacht</b><small id="award-army-sub">3 Ritter nötig</small></div></div>
+          </div>
+        </aside>
+
+        <section class="board-wrap" id="board-wrap">
+          <div class="board-canvas" id="board-canvas"></div>
+          <div class="cam-toolbar">
+            <button class="tool" id="zoom-out" title="Herauszoomen">−</button>
+            <input type="range" id="zoom-slider" min="0" max="100" value="45" aria-label="Zoom" />
+            <button class="tool" id="zoom-in" title="Hineinzoomen">+</button>
+            <span class="zoom-val" id="zoom-val">100%</span>
+            <button class="tool text" id="pan-toggle" title="Schwenken (oder Leertaste halten)">✋ Schwenken</button>
+            <button class="tool" id="rot-left" title="Nach links drehen">↺</button>
+            <button class="tool" id="rot-right" title="Nach rechts drehen">↻</button>
+            <button class="tool" id="cam-reset" title="Ansicht zurücksetzen">⌖</button>
+          </div>
+          <div class="board-buttons">
+            <button class="chip-btn active" id="toggle-harbors">⚓ Häfen</button>
+            <button class="chip-btn" id="island-tour">🧭 Inseltour</button>
+          </div>
+          <div class="placements" id="placements" hidden></div>
+          <div class="board-hint">Ziehen zum Drehen · Scrollen zum Zoomen · WASD / Leertaste + Ziehen zum Schwenken</div>
+          <div class="round-info" id="round-info"></div>
+          <div class="dice-chip" id="dice-chip" hidden></div>
+          <div class="toasts" id="toasts"></div>
+          <div class="banner" id="banner" hidden></div>
+          <div class="tooltip parchment" id="tooltip" hidden></div>
+        </section>
+
+        <aside class="turn-panel parchment">
+          <div class="turn-card" id="turn-card"></div>
+          <div class="log-tabs">
+            <button class="log-tab active" data-tab="log">Chronik</button>
+            <button class="log-tab" data-tab="chat" id="chat-tab">Chat <span class="badge" id="chat-badge" hidden></span></button>
+          </div>
+          <ol class="chronicle" id="chronicle"></ol>
+          <div class="chat" id="chat" hidden>
+            <ol id="chat-list"></ol>
+            <form id="chat-form"><input id="chat-input" maxlength="240" placeholder="Nachricht…" autocomplete="off" /><button class="btn small">➤</button></form>
+          </div>
+        </aside>
+      </div>
+
+      <footer class="handbar">
+        <div class="res-cards" id="res-cards"></div>
+        <div class="dev-panel" id="dev-panel"></div>
+        <div class="build-buttons" id="build-buttons"></div>
+      </footer>
+      <div class="footnote" id="footnote">Wer zuerst 10 Siegpunkte erreicht, gewinnt</div>
+    </div>
+  </div>
+
+  <div id="modal-root"></div>
+  <div class="global-toast" id="global-toast" hidden></div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

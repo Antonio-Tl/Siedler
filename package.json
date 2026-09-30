@@ -1,0 +1,22 @@
+{
+  "name": "siedlungen",
+  "version": "1.0.0",
+  "description": "3D-Catan-Nachbau mit Online-Multiplayer und Bots",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "express": "^4.22.3",
+    "three": "^0.186.1",
+    "ws": "^8.22.0"
+  }
+}
