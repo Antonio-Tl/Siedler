@@ -57,7 +57,7 @@ function client(name, token) {
       a({ type: 'discard', resources: out });
       return;
     }
-    if (st.trade && st.trade.status === 'pending' && st.trade.to === me) { a({ type: 'respondTrade', response: 'decline' }); return; }
+    if (st.trade && st.trade.responses[me] === 'pending') { a({ type: 'respondTrade', response: 'decline' }); return; }
     if (st.current !== me) return;
     if (st.turn.pending === 'robber') {
       const hex = robberHexes(st)[0];

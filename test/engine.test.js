@@ -128,21 +128,42 @@ test('Sicht verbirgt fremde Handkarten', () => {
   assert.equal(view.rng, undefined);
 });
 
-test('Spielerhandel mit Annahme und Gegenangebot', () => {
+test('Handelsangebot an alle: Zusagen sammeln, Anbieter wählt', () => {
   const g = setupGame(21);
   const cur = g.current;
-  const other = (cur + 1) % 4;
+  const [a, b, c] = [1, 2, 3].map((k) => (cur + k) % 4);
   g.turn.rolled = true;
   g.players[cur].resources = { wood: 2, brick: 0, sheep: 0, wheat: 0, ore: 0 };
-  g.players[other].resources = { wood: 0, brick: 0, sheep: 0, wheat: 0, ore: 2 };
-  assert.ok(applyAction(g, cur, { type: 'offerTrade', to: other, give: { wood: 1 }, get: { ore: 1 } }).ok);
+  g.players[a].resources = { wood: 0, brick: 0, sheep: 0, wheat: 0, ore: 1 };
+  g.players[b].resources = { wood: 0, brick: 0, sheep: 0, wheat: 0, ore: 2 };
+  g.players[c].resources = { wood: 0, brick: 0, sheep: 0, wheat: 0, ore: 0 };
+  assert.ok(applyAction(g, cur, { type: 'offerTrade', give: { wood: 1 }, get: { ore: 1 } }).ok);
+  assert.deepEqual(pendingActors(g).sort(), [a, b, c].sort(), 'alle Mitspieler sind gefragt');
   assert.equal(applyAction(g, cur, { type: 'buyDev' }).ok, false, 'offenes Angebot blockiert Bauen');
-  assert.ok(applyAction(g, other, { type: 'respondTrade', response: 'counter', give: { ore: 1 }, get: { wood: 2 } }).ok);
-  assert.ok(applyAction(g, cur, { type: 'respondTrade', response: 'accept' }).ok);
-  assert.equal(g.players[cur].resources.ore, 1);
-  assert.equal(g.players[cur].resources.wood, 0);
-  assert.equal(g.players[other].resources.wood, 2);
+  assert.equal(applyAction(g, c, { type: 'respondTrade', response: 'accept' }).ok, false, 'ohne Karten keine Zusage');
+  assert.ok(applyAction(g, a, { type: 'respondTrade', response: 'accept' }).ok);
+  assert.ok(applyAction(g, b, { type: 'respondTrade', response: 'accept' }).ok);
+  assert.ok(applyAction(g, c, { type: 'respondTrade', response: 'decline' }).ok);
+  assert.deepEqual(pendingActors(g), [cur], 'danach entscheidet der Anbieter');
+  assert.equal(applyAction(g, cur, { type: 'confirmTrade', with: c }).ok, false, 'nur Zusagen wählbar');
+  assert.ok(applyAction(g, cur, { type: 'confirmTrade', with: b }).ok);
   assert.equal(g.trade, null);
+  assert.equal(g.players[cur].resources.ore, 1);
+  assert.equal(g.players[cur].resources.wood, 1);
+  assert.equal(g.players[b].resources.wood, 1);
+  assert.equal(g.players[b].resources.ore, 1);
+  assert.equal(g.players[a].resources.ore, 1, 'der andere Zusagende behält seine Karten');
+});
+
+test('Lehnen alle ab, ist das Angebot vom Tisch', () => {
+  const g = setupGame(23);
+  const cur = g.current;
+  g.turn.rolled = true;
+  g.players[cur].resources = { wood: 1, brick: 0, sheep: 0, wheat: 0, ore: 0 };
+  assert.ok(applyAction(g, cur, { type: 'offerTrade', give: { wood: 1 }, get: { ore: 1 } }).ok);
+  for (const o of g.players) if (o.idx !== cur) assert.ok(applyAction(g, o.idx, { type: 'respondTrade', response: 'decline' }).ok);
+  assert.equal(g.trade, null);
+  assert.ok(g.events.some((e) => e.type === 'tradeDeclined' && e.from === cur));
 });
 
 test('Banktausch 4:1', () => {

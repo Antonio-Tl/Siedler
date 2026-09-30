@@ -108,7 +108,6 @@ function activeLocalSeat(room, token) {
   if (!room.game) return local[0];
   const g = room.game;
   const actors = [...pendingActors(g)];
-  if (g.trade && g.trade.status === 'countered') actors.unshift(g.trade.from);
   const found = actors.find((i) => local.includes(i));
   if (found !== undefined) room.lastLocal = found;
   return found ?? (local.includes(room.lastLocal) ? room.lastLocal : local[0]);
@@ -197,7 +196,6 @@ function pump(room) {
   if (!room.game || room.timer || room.game.phase === 'ended') return;
   const g = room.game;
   const actors = pendingActors(g).filter((i) => isAutomated(room, i));
-  if (g.trade && g.trade.status === 'countered' && isAutomated(room, g.trade.from)) actors.unshift(g.trade.from);
   if (!actors.length) return;
   const idx = actors[0];
   room.timer = setTimeout(() => {

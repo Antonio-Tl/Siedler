@@ -17,26 +17,26 @@
 <body class="menu-open">
   <!-- Spiel (liegt immer im Hintergrund; im Menü unscharf) -->
   <div id="game-screen" class="screen">
-    <div class="frame">
+    <div class="frame ornate">
       <header class="topbar">
-        <div class="brand"><span class="crest">⚜</span><span>Siedlungen</span></div>
-        <div class="island-name"><span class="gem">◆</span><span id="island-name">Insel</span><span class="gem">◆</span></div>
+        <div class="brand"><span class="crest" data-art="crest:40"></span><span class="brand-name">Siedlungen</span></div>
+        <div class="island-name"><span class="gem" data-art="gem:14"></span><span id="island-name">Insel</span><span class="gem" data-art="gem:14"></span></div>
         <div class="top-actions">
           <span class="room-chip" id="room-chip" hidden></span>
-          <button class="btn-rules" id="btn-rules">📖 Regeln</button>
-          <button class="round-btn" id="btn-sound" title="Ton an/aus">🔊</button>
-          <button class="round-btn" id="btn-settings" title="An deinem Tisch – Einstellungen">⚙</button>
-          <button class="round-btn" id="btn-menu" title="Menü">☰</button>
+          <button class="btn-rules" id="btn-rules"><span data-art="book:18"></span> Regeln</button>
+          <button class="medal-btn" id="btn-sound" title="Ton an/aus"></button>
+          <button class="medal-btn" id="btn-settings" title="An deinem Tisch – Einstellungen"><span data-art="gear:18"></span></button>
+          <button class="medal-btn" id="btn-menu" title="Menü"><span data-art="menu:18"></span></button>
         </div>
       </header>
 
       <div class="main">
-        <aside class="settlers wood-panel">
+        <aside class="settlers wood-panel ornate">
           <h2 class="panel-title">Die Siedler</h2>
           <ul id="player-list"></ul>
           <div class="awards">
-            <div class="award" id="award-road"><span class="ico">🛤️</span><div><b>Längste Straße</b><small id="award-road-sub">5 Straßen nötig</small></div></div>
-            <div class="award" id="award-army"><span class="ico">⚔️</span><div><b>Größte Rittermacht</b><small id="award-army-sub">3 Ritter nötig</small></div></div>
+            <div class="award" id="award-road"><span class="award-art" data-art="awardRoad:34"></span><div><b>Längste Straße</b><small id="award-road-sub">5 Straßen nötig</small></div></div>
+            <div class="award" id="award-army"><span class="award-art" data-art="awardArmy:34"></span><div><b>Größte Rittermacht</b><small id="award-army-sub">3 Ritter nötig</small></div></div>
           </div>
         </aside>
 
@@ -56,6 +56,7 @@
           <div class="board-buttons">
             <button class="chip-btn active" id="toggle-harbors">⚓ Häfen</button>
             <button class="chip-btn" id="island-tour">🧭 Inseltour</button>
+            <button class="chip-btn" id="cam-toggle" title="Kamerafahrten an/aus">🎥 Kamerafahrten</button>
           </div>
           <div class="placements" id="placements" hidden></div>
           <div class="board-hint">Ziehen zum Drehen · Scrollen zum Zoomen · WASD / Leertaste + Ziehen zum Schwenken</div>
@@ -67,9 +68,9 @@
           <div class="tour-panel parchment" id="tour-panel" hidden></div>
         </section>
 
-        <aside class="turn-panel parchment">
+        <aside class="turn-panel parchment ornate">
           <div class="turn-card" id="turn-card"></div>
-          <div class="log-tabs">
+          <div class="log-tabs section-head">
             <button class="log-tab active" data-tab="log">Chronik</button>
             <button class="log-tab" data-tab="chat" id="chat-tab">Chat <span class="badge" id="chat-badge" hidden></span></button>
           </div>
@@ -83,10 +84,14 @@
 
       <footer class="handbar">
         <div class="res-cards" id="res-cards"></div>
-        <div class="dev-panel" id="dev-panel"></div>
+        <div class="dev-panel ornate" id="dev-panel"></div>
         <div class="build-buttons" id="build-buttons"></div>
       </footer>
-      <div class="footnote" id="footnote">Wer zuerst 10 Siegpunkte erreicht, gewinnt</div>
+      <div class="footbar">
+        <span class="foot-side"></span>
+        <div class="footnote" id="footnote">Wer zuerst 10 Siegpunkte erreicht, gewinnt</div>
+        <button class="foot-trade" id="foot-trade" title="Handelstisch öffnen (T)"><span data-art="trade:14"></span> Handeln</button>
+      </div>
     </div>
   </div>
 

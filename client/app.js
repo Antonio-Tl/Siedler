@@ -7,7 +7,7 @@ import {
 import { Board3D } from './board3d.js';
 import { play, toggleSound, isSoundOn, SOUNDS } from './sound.js';
 import { settings, onSettingsChange } from './settings.js';
-import { resourceArt, portraitArt, iconArt, devArt, ILLUS } from './art.js';
+import { resourceArt, portraitArt, iconArt, devArt, uiArt, ILLUS } from './art.js';
 
 const TERRAIN_EMOJI = { forest: '🌲', hills: '🧱', pasture: '🐑', fields: '🌾', mountains: '⛰️', desert: '🏜️' };
 const LOG_ICON = {
@@ -501,6 +501,14 @@ function ensureBoard() {
     S.board.setHarborLabels(on);
   });
   $('#island-tour').addEventListener('click', () => (S.tour ? stopTour() : startTour()));
+  const camBtn = $('#cam-toggle');
+  const syncCam = () => camBtn.classList.toggle('active', settings.cinematic);
+  syncCam();
+  onSettingsChange((k) => { if (k === 'cinematic') syncCam(); });
+  camBtn.addEventListener('click', () => {
+    settings.cinematic = !settings.cinematic;
+    toast(settings.cinematic ? 'Kamerafahrten an' : 'Kamerafahrten aus – die Kamera bleibt, wo du sie hinstellst.', true);
+  });
 }
 
 function onState(state) {
@@ -575,7 +583,6 @@ function render() {
     if (isMyMainPhase()) S.redrawTrade();
     else closeModal();
   }
-  if (S.modalKey === 'counter' && !(st.trade && st.trade.status === 'pending' && st.trade.to === S.you)) closeModal();
 }
 
 function renderPlayers() {
@@ -588,20 +595,20 @@ function renderPlayers() {
     const off = !S.demo && seat && !seat.isBot && !seat.connected;
     const discarding = st.turn.pending === 'discard' && st.turn.discards && st.turn.discards[p.idx];
     const isMe = p.idx === S.you;
-    return `<li class="player ${active ? 'active' : ''} ${isMe ? 'me' : ''}" data-idx="${p.idx}">
-      <div class="portrait-wrap">${avatar(p, 46)}</div>
-      <div>
+    const extra = [p.knights ? `⚔️ ${p.knights}` : '', p.longestRoad >= 3 ? `🛤️ ${p.longestRoad}` : ''].filter(Boolean).join(' · ');
+    return `<li class="player ${active ? 'active' : ''} ${isMe ? 'me' : ''}" data-idx="${p.idx}" style="--pc:${COLOR_HEX[p.color]}">
+      <div class="portrait-wrap">${portraitArt(p.idx, COLOR_HEX[p.color], 58)}</div>
+      <div class="pinfo">
         <div class="pname">${esc(isMe && !S.room?.hotseat ? 'Du' : p.name)}${p.isBot ? '<small>KI</small>' : ''}</div>
         <div class="phouse">${esc(COLOR_LABEL[p.color] || '')}</div>
+        <div class="pvp"><span class="crown">👑</span> <b>${vp}</b> <span class="of">/ ${st.vpToWin}</span></div>
       </div>
-      <div class="pvp"><span class="crown">👑</span> <b>${vp}</b> / ${st.vpToWin}</div>
       <div class="pstats">
-        <span title="Rohstoffkarten">🂠 ${p.resourceCount}</span>
-        <span title="Entwicklungskarten">🃏 ${p.devCount}</span>
-        <span title="Gespielte Ritter">⚔️ ${p.knights}</span>
-        <span title="Längste eigene Straße">🛤️ ${p.longestRoad}</span>
+        <span title="Rohstoffkarten"><i class="mini-card"></i>${p.resourceCount} ${p.resourceCount === 1 ? 'Karte' : 'Karten'}</span>
+        ${extra ? `<span class="pextra" title="Ritter · längste eigene Straße">${extra}</span>` : ''}
+        <span title="Entwicklungskarten">${p.devCount} Entw.</span>
       </div>
-      ${off ? '<span class="pstate off">getrennt</span>' : discarding ? '<span class="pstate">wirft ab …</span>' : active ? '<span class="pstate">am Zug</span>' : ''}
+      ${off ? '<span class="pstate off">getrennt</span>' : discarding ? '<span class="pstate">wirft ab …</span>' : ''}
       ${popsFor(p.idx)}
     </li>`;
   }).join('');
@@ -677,7 +684,8 @@ function renderTurnCard() {
       m.illus = 'trade';
       m.caption = 'Am Handelstisch';
       m.title = 'Ein Angebot liegt aus';
-      m.desc = `Warte auf die Antwort von ${esc(st.players[st.trade.to].name)}.`;
+      const acc = Object.values(st.trade.responses).filter((r) => r === 'accepted').length;
+      m.desc = acc ? `${acc === 1 ? 'Ein Mitspieler hat' : `${acc} Mitspieler haben`} zugesagt – wähle deinen Handelspartner.` : 'Dein Angebot liegt bei allen Mitspielern. Warte auf ihre Antworten.';
     } else if (!t.rolled) {
       m.illus = 'dice';
       m.caption = 'Der Würfelwurf';
@@ -698,7 +706,7 @@ function renderTurnCard() {
   } else {
     m.title = 'Ein Moment der Geduld';
     if (st.turn.pending === 'robber') m.desc = `${esc(cur.name)} versetzt den Räuber …`;
-    else if (st.trade && st.trade.to !== S.you) m.desc = `${esc(cur.name)} verhandelt mit ${esc(st.players[st.trade.to].name)}.`;
+    else if (st.trade) m.desc = `${esc(cur.name)} bietet allen einen Handel an.`;
     else m.desc = `${esc(cur.name)} überlegt den nächsten Zug.`;
   }
 
@@ -707,14 +715,17 @@ function renderTurnCard() {
   const illusChanged = !S.turnCardKey || JSON.parse(S.turnCardKey)[2] !== m.illus;
   S.turnCardKey = key;
   const card = $('#turn-card');
+  const saved = !S.demo && S.room ? `<span class="saved">${uiArt('quill', 13)} Automatisch gespeichert · ${m.status}</span>` : `<span class="saved">${m.status}</span>`;
   card.innerHTML = `
+    <div class="medallion">${uiArt('compass', 34)}</div>
     <div class="turn-who">${m.who}</div>
-    <div class="turn-status">⏳ ${m.status}</div>
+    <div class="turn-status">${saved}</div>
+    <div class="sep"><span></span></div>
     <div class="illus">${ILLUS[m.illus]}</div>
     ${m.caption ? `<div class="illus-caption">${m.caption}</div>` : ''}
     <div class="turn-title">${m.title}</div>
     <p class="turn-desc">${m.desc}</p>
-    <div class="turn-actions">${m.actions.map((a, i) => `<button class="btn ${a.primary ? 'primary' : ''} block" data-a="${i}">${a.label}${a.key ? ` <small class="kbd">${a.key}</small>` : ''}</button>`).join('')}</div>`;
+    <div class="turn-actions">${m.actions.map((a, i) => `<button class="btn ${a.primary ? 'primary ornate-btn' : ''} block" data-a="${i}">${a.label}${a.key ? ` <small class="kbd">${a.key}</small>` : ''}</button>`).join('')}</div>`;
   if (illusChanged) {
     card.classList.remove('flip');
     void card.offsetWidth;
@@ -730,7 +741,7 @@ function renderChronicle() {
   $('#chronicle').innerHTML = items.map((l, i) => {
     const p = l.player !== null && l.player !== undefined ? st.players[l.player] : null;
     return `<li class="${i < fresh ? 'fresh' : ''}"><span class="li-ico">${LOG_ICON[l.icon] || '📜'}</span><div>${esc(l.text)}
-      <div class="li-meta">${p ? `<span class="dot" style="background:${COLOR_HEX[p.color]}"></span>` : ''}${l.turn ? `Zug ${l.turn}` : 'Gründung'}</div></div></li>`;
+      <div class="li-meta">${p ? `<span class="li-avatar">${portraitArt(p.idx, COLOR_HEX[p.color], 18)}</span>` : ''}${l.turn ? `Zug ${l.turn}` : 'Gründung'}</div></div></li>`;
   }).join('');
 }
 
@@ -742,11 +753,14 @@ function renderHand() {
     el.innerHTML = '<div class="dev-empty">Du schaust zu.</div>';
     return;
   }
+  const canTrade = isMyMainPhase();
   el.innerHTML = RESOURCES.map((r) => {
     const diff = prev && prev.resources && prev.idx === p.idx ? p.resources[r] - prev.resources[r] : 0;
-    return `<div class="rcard ${p.resources[r] ? '' : 'zero'} ${diff < 0 ? 'drop' : ''}" data-res="${r}" title="${RES_LABEL[r]}">
-      <span class="lbl">${RES_LABEL[r]}</span><span class="art-box">${resourceArt(r, 42)}</span><span class="cnt">${p.resources[r]}</span></div>`;
+    const tip = canTrade && p.resources[r] ? `${RES_LABEL[r]} – klicken zum Handeln` : RES_LABEL[r];
+    return `<button class="rcard ${p.resources[r] ? '' : 'zero'} ${diff < 0 ? 'drop' : ''} ${canTrade && p.resources[r] ? 'tradable' : ''}" data-res="${r}" title="${tip}">
+      <span class="lbl">${RES_LABEL[r]}</span><span class="art-box">${resourceArt(r, 50)}</span><span class="cnt">${p.resources[r]}</span></button>`;
   }).join('');
+  $$('.rcard.tradable', el).forEach((c) => c.addEventListener('click', () => openTrade({ give: c.dataset.res })));
 }
 
 function devPlayable(card) {
@@ -763,8 +777,9 @@ function renderDev() {
   const p = me();
   const el = $('#dev-panel');
   const st = S.state;
+  const head = (n) => `<div class="dev-head">${uiArt('devCard', 16)} Entwicklungskarten <span class="count">${n}</span></div>`;
   if (!p || !p.devCards) {
-    el.innerHTML = `<div class="dev-head">${iconArt('card', 16)} Entwicklungskarten <span class="count">${st.devDeckCount}</span></div><div class="dev-empty">Stapel: ${st.devDeckCount} Karten</div>`;
+    el.innerHTML = `${head(st.devDeckCount)}<div class="dev-empty">Stapel: ${st.devDeckCount} Karten</div>`;
     return;
   }
   const groups = {};
@@ -777,12 +792,15 @@ function renderDev() {
   const cards = order.filter((t) => groups[t]).map((t) => {
     const g = groups[t];
     const can = devPlayable(t);
-    return `<div class="dev-card ${can ? 'ready' : ''}" title="${esc(DEV_TEXT[t])}"><span class="de">${devArt(t, 30)}</span>
-      <div><b>${DEV_LABEL[t]}${g.n > 1 ? ` ×${g.n}` : ''}</b><small>${t === 'vp' ? 'zählt automatisch' : g.fresh ? `${g.fresh} neu – ab nächstem Zug` : 'bereit'}</small></div>
+    return `<div class="dev-card ${can ? 'ready' : ''}" title="${esc(DEV_TEXT[t])}">
+      ${g.n > 1 ? `<span class="dev-n">×${g.n}</span>` : ''}
+      <span class="de">${devArt(t, 34)}</span>
+      <b>${DEV_LABEL[t]}</b>
+      <small>${t === 'vp' ? 'zählt automatisch' : g.fresh ? 'ab nächstem Zug' : 'bereit'}</small>
       ${t === 'vp' ? '' : `<button data-dev="${t}" ${can ? '' : 'disabled'}>Ausspielen</button>`}</div>`;
   }).join('');
-  el.innerHTML = `<div class="dev-head">${iconArt('card', 16)} Entwicklungskarten <span class="count">${p.devCards.length}</span></div>
-    <div class="dev-list">${cards || `<div class="dev-empty">${iconArt('card', 30)}<span>Dein nächster Vorteil – kaufe eine Karte. <small>(${st.devDeckCount} im Stapel)</small></span></div>`}</div>`;
+  el.innerHTML = `${head(p.devCards.length)}
+    <div class="dev-list">${cards || `<div class="dev-intro"><span class="dev-illu">${uiArt('devCard', 54)}</span><div><b>Dein nächster Vorteil</b><small>Kaufe eine Karte, um zu beginnen · ${st.devDeckCount} im Stapel</small></div></div>`}</div>`;
   $$('[data-dev]', el).forEach((b) => b.addEventListener('click', () => playDevCard(b.dataset.dev)));
 }
 
@@ -820,13 +838,22 @@ function buildAvailable(kind) {
   return validCitySpots(st, S.you).length > 0;
 }
 
+function missingText(cost) {
+  const p = me();
+  if (!p || !p.resources) return '';
+  const miss = RESOURCES.filter((r) => (cost[r] || 0) > p.resources[r]).map((r) => `${cost[r] - p.resources[r]} ${RES_LABEL[r]}`);
+  return miss.length ? `Es fehlt: ${miss.join(', ')}` : '';
+}
+
 function renderBuild() {
   const p = me();
   $('#build-buttons').innerHTML = BUILDS.map((b) => {
     const stock = p && p.stock && b.kind !== 'dev' ? `${p.stock[b.kind]} übrig` : `${S.state.devDeckCount} im Stapel`;
     const ok = buildAvailable(b.kind);
-    return `<button class="bbtn ${S.mode === b.kind ? 'active' : ''} ${ok ? 'ready' : ''}" data-build="${b.kind}" ${ok ? '' : 'disabled'} title="${b.label}: ${costText(b.cost)}">
-      <span class="bi">${iconArt(b.icon, 26)}</span><span class="bl">${b.label}</span><span class="bc">${costArt(b.cost)}</span><span class="stock">${stock}</span></button>`;
+    const miss = missingText(b.cost);
+    const title = ok ? `${b.label} bauen – ${costText(b.cost)}` : miss ? `${b.label}: ${miss}` : `${b.label}: ${costText(b.cost)}`;
+    return `<button class="bbtn ${S.mode === b.kind ? 'active' : ''} ${ok ? 'ready' : ''}" data-build="${b.kind}" ${ok ? '' : 'disabled'} title="${title}">
+      <span class="bi">${iconArt(b.icon, 30)}</span><span class="bl">${b.label}</span><span class="bc">${costArt(b.cost, 14)}</span><span class="stock">${stock}</span></button>`;
   }).join('');
   $$('[data-build]').forEach((btn) => btn.addEventListener('click', () => {
     const k = btn.dataset.build;
@@ -970,7 +997,7 @@ function processEvents(state) {
   const fresh = state.events.filter((e) => e.seq > S.lastSeq);
   S.lastSeq = state.seq;
   for (const ev of fresh) handleEvent(ev, state);
-  if (state.trade && state.trade.status === 'pending' && state.trade.to === S.you && S.lastOfferId !== state.trade.id) {
+  if (state.trade && state.trade.responses[S.you] === 'pending' && S.lastOfferId !== state.trade.id) {
     S.lastOfferId = state.trade.id;
     play('offer');
   }
@@ -981,18 +1008,28 @@ async function runSequence(stops) {
   const token = ++S.cineToken;
   const b = S.board;
   let moving = settings.cinematic && !S.tour && document.visibilityState === 'visible';
-  const saved = { pos: b.camera.position.clone(), target: b.controls.target.clone() };
-  const wasMoved = b.userMoved;
-  for (const s of stops) {
-    if (token !== S.cineToken) moving = false;
-    if (moving && s.view) {
-      const ok = await b.flyTo(s.view(), s.dur || 800);
-      if (!ok) moving = false;
+  // Folgen mehrere Fahrten aufeinander, merken wir uns nur die Ansicht vor der ersten
+  if (!S.cineActive) S.cineHome = { pos: b.camera.position.clone(), target: b.controls.target.clone(), moved: b.userMoved };
+  S.cineActive = (S.cineActive || 0) + 1;
+  const home = S.cineHome;
+  let moved = false;
+  try {
+    for (const s of stops) {
+      if (token !== S.cineToken) moving = false;
+      // Einzelne Kamerafahrten lassen sich in den Einstellungen abschalten
+      const allowed = moving && (!s.cam || settings[s.cam]);
+      if (allowed && s.view) {
+        const ok = await b.flyTo(s.view(), s.dur || 800);
+        if (!ok) moving = false;
+        else moved = true;
+      }
+      if (s.action) await s.action();
+      if (allowed && moving && s.hold) await sleep(s.hold);
     }
-    if (s.action) await s.action();
-    if (moving && s.hold) await sleep(s.hold);
+    if (moving && moved && token === S.cineToken) await b.flyTo(home.moved ? home : b.baseViewSpec(), 950);
+  } finally {
+    S.cineActive--;
   }
-  if (moving && token === S.cineToken) await b.flyTo(wasMoved ? saved : b.baseViewSpec(), 950);
 }
 
 function rollSequence(ev, st) {
@@ -1001,12 +1038,13 @@ function rollSequence(ev, st) {
   play('dice');
   const producing = ev.robber ? [] : st.board.hexes.filter((h) => h.number === sum && h.id !== st.robber).map((h) => h.id);
   const stops = [
-    { view: () => S.board.trayView(), dur: 600 },
+    { view: () => S.board.trayView(), dur: 600, cam: 'camDice' },
     { action: async () => { await S.board.showDice(ev.dice); rolling.dismiss(); } },
   ];
   if (ev.robber) {
     stops.push({
       view: () => { const p = S.board.robberPos(); return S.board.pointView(p.x, p.z, 3.4); },
+      cam: 'camRobber',
       dur: 800,
       hold: 1300,
       action: async () => {
@@ -1018,6 +1056,7 @@ function rollSequence(ev, st) {
   } else if (producing.length) {
     stops.push({
       view: () => S.board.hexesView(producing),
+      cam: 'camHarvest',
       dur: 800,
       hold: 1500,
       action: async () => {
@@ -1131,11 +1170,12 @@ function handleEvent(ev, st) {
       play('robber');
       if (!mine(ev.player)) {
         const h = st.board.hexes[ev.hex];
-        runSequence([{ view: () => S.board.pointView(h.x, h.y, 3.8), dur: 800, hold: 1300 }]);
+        runSequence([{ view: () => S.board.pointView(h.x, h.y, 3.8), cam: 'camRobber', dur: 800, hold: 1300 }]);
       }
       break;
     case 'build':
       play(ev.kind === 'city' ? 'city' : ev.kind === 'road' ? 'road' : 'build');
+      if (!mine(ev.player)) queueBuildFocus(ev, st);
       break;
     case 'buyDev':
       play('card');
@@ -1156,7 +1196,10 @@ function handleEvent(ev, st) {
       if (mine(ev.a) || mine(ev.b)) boardToast({ icon: '🤝', title: 'Handel abgeschlossen', text: `${esc(nameOf(ev.a))} und ${esc(nameOf(ev.b))} tauschen.` });
       break;
     case 'tradeDeclined':
-      if (mine(ev.from)) boardToast({ icon: '✋', title: 'Angebot abgelehnt', text: `${esc(st.players[ev.to].name)} möchte nicht tauschen.` });
+      if (mine(ev.from)) boardToast({ icon: '✋', title: 'Niemand möchte tauschen', text: 'Alle Mitspieler haben dein Angebot abgelehnt.' });
+      break;
+    case 'tradeAccepted':
+      if (mine(ev.from)) { play('coin'); boardToast({ icon: '🤝', title: `${esc(st.players[ev.by].name)} nimmt an`, text: 'Wähle im Handelsdialog, mit wem du tauschst.' }); }
       break;
     case 'bankTrade':
       play('coin');
@@ -1175,6 +1218,36 @@ function handleEvent(ev, st) {
       break;
     default:
   }
+}
+
+// Bauten der Mitspieler kurz zeigen; schnell aufeinanderfolgende Bauten werden zusammengefasst
+const BUILD_LABEL = { road: 'eine Straße', settlement: 'eine Siedlung', city: 'eine Stadt' };
+function queueBuildFocus(ev, st) {
+  const pos = ev.kind === 'road' ? st.board.edges[ev.id] : st.board.vertices[ev.id];
+  const color = COLOR_HEX[st.players[ev.player].color];
+  const batch = S.buildBatch && S.buildBatch.player === ev.player ? S.buildBatch : { player: ev.player, items: [] };
+  batch.items.push({ x: pos.x, z: pos.y, kind: ev.kind, color });
+  S.buildBatch = batch;
+  clearTimeout(batch.timer);
+  batch.timer = setTimeout(() => {
+    S.buildBatch = null;
+    const items = batch.items;
+    const cx = items.reduce((a, i) => a + i.x, 0) / items.length;
+    const cz = items.reduce((a, i) => a + i.z, 0) / items.length;
+    const spread = Math.max(0, ...items.map((i) => Math.hypot(i.x - cx, i.z - cz)));
+    const name = esc(st.players[batch.player].name);
+    const what = items.map((i) => BUILD_LABEL[i.kind]).join(', ');
+    runSequence([{
+      view: () => S.board.pointView(cx, cz, 3.6 + spread * 1.4),
+      cam: 'camBuild',
+      dur: 750,
+      hold: 1300,
+      action: async () => {
+        for (const i of items) S.board.dust(i.x, i.z, 14, i.color);
+        if (st.phase !== 'setup') banner(`${name} baut`, what);
+      },
+    }]);
+  }, 450);
 }
 
 function popsFor(idx) {
@@ -1290,7 +1363,9 @@ function hideCurtain() {
 
 function openModal(key, html, { wide = false, closable = true, onClose } = {}) {
   const root = $('#modal-root');
-  root.innerHTML = `<div class="modal-backdrop"><div class="modal parchment ${wide ? 'wide' : ''}" role="dialog" aria-modal="true">
+  const base = (k) => String(k || '').split(':').slice(0, 2).join(':');
+  const still = S.modalKey && key && base(S.modalKey) === base(key);
+  root.innerHTML = `<div class="modal-backdrop ${still ? 'still' : ''}"><div class="modal parchment ${wide ? 'wide' : ''} ${still ? 'still' : ''}" role="dialog" aria-modal="true">
     <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
     ${closable ? '<button class="modal-close" aria-label="Schließen">✕</button>' : ''}<div class="modal-body">${html}</div></div></div>`;
   S.modalKey = key;
@@ -1318,10 +1393,9 @@ function desiredAutoModal() {
   if (st.turn.pending === 'discard' && st.turn.discards?.[S.you]) return `discard:${st.turn.number}:${S.you}`;
   const t = st.trade;
   if (t) {
-    if (t.status === 'pending' && t.to === S.you) return `incoming:${t.id}`;
-    if (t.status === 'pending' && t.from === S.you) return `waiting:${t.id}`;
-    if (t.status === 'countered' && t.from === S.you) return `countered:${t.id}`;
-    if (t.status === 'countered' && t.to === S.you) return `counterwait:${t.id}`;
+    if (t.from === S.you) return `offer:${t.id}:${Object.values(t.responses).join(',')}`;
+    if (t.responses[S.you] === 'pending') return `incoming:${t.id}:${Object.values(t.responses).join(',')}`;
+    if (t.responses[S.you] === 'accepted') return `accepted:${t.id}`;
   }
   return null;
 }
@@ -1335,7 +1409,6 @@ function renderAutoModal(force = false) {
     return;
   }
   if (!force && S.dismissedAuto === want) return;
-  if (S.modalKey === 'counter' && want.startsWith('incoming')) return;
   S.autoModal = want;
   const [kind] = want.split(':');
   const dismiss = () => { S.dismissedAuto = want; };
@@ -1346,9 +1419,8 @@ function renderAutoModal(force = false) {
   }
   if (kind === 'discard') openDiscard();
   else if (kind === 'incoming') openIncoming();
-  else if (kind === 'waiting') openWaiting();
-  else if (kind === 'countered') openCountered();
-  else if (kind === 'counterwait') openCounterWait();
+  else if (kind === 'offer') openOfferStatus();
+  else if (kind === 'accepted') openAcceptedWait();
   else if (kind === 'winner') openWinner(dismiss);
   S.autoModal = want;
 }
@@ -1412,85 +1484,76 @@ function openIncoming() {
   const from = st.players[t.from];
   const p = me();
   const canAccept = hasRes(p.resources, t.get);
+  const others = Object.entries(t.responses).filter(([i]) => Number(i) !== S.you);
   const m = openModal(S.autoModal, `
-    <h2>Ein Angebot für dich</h2>
-    <div class="modal-lede">${avatar(from, 56)}<div><span class="eyebrow">Ein Tausch unter Siedlern</span><b>${esc(from.name)} schlägt einen Handel vor</b><span class="hint">Du kannst annehmen, ein Gegenangebot machen oder ablehnen.</span></div></div>
+    <h2>Ein Angebot an alle</h2>
+    <div class="modal-lede">${avatar(from, 56)}<div><span class="eyebrow">Ein Tausch unter Siedlern</span><b>${esc(from.name)} sucht einen Handelspartner</b><span class="hint">Nimmst du an, entscheidet ${esc(from.name)}, mit wem getauscht wird.</span></div></div>
     <div class="trade-summary">
       <div class="side"><small>Du erhältst</small><div class="items">${resList(t.give)}</div></div>
       <div class="swap">⇄</div>
       <div class="side"><small>Du gibst</small><div class="items">${resList(t.get)}</div></div>
     </div>
+    ${others.length ? `<div class="resp-mini">${others.map(([i, r]) => `<span class="rm ${r}" title="${esc(st.players[i].name)}">${avatar(st.players[i], 22)}${r === 'accepted' ? '✓' : r === 'declined' ? '✗' : '…'}</span>`).join('')}</div>` : ''}
     ${canAccept ? '' : '<p class="hint center">Dir fehlen die gewünschten Karten.</p>'}
     <div class="modal-actions">
       <button class="btn danger" id="tr-decline">Ablehnen</button>
-      <button class="btn" id="tr-counter">Gegenangebot</button>
       <button class="btn primary" id="tr-accept" ${canAccept ? '' : 'disabled'}>Annehmen</button>
     </div>`, { closable: false });
   $('#tr-accept', m).addEventListener('click', () => act('respondTrade', { response: 'accept' }));
   $('#tr-decline', m).addEventListener('click', () => act('respondTrade', { response: 'decline' }));
-  $('#tr-counter', m).addEventListener('click', () => openTrade({ counter: true }));
 }
 
-function openWaiting() {
+// Status für den Anbieter: wer hat zugesagt? Mit wem wird getauscht?
+function openOfferStatus() {
   const st = S.state;
   const t = st.trade;
-  const to = st.players[t.to];
   const you = me();
+  const LABEL = { pending: 'überlegt …', accepted: 'nimmt an', declined: 'lehnt ab' };
+  const rows = Object.entries(t.responses).map(([i, r]) => {
+    const o = st.players[i];
+    return `<li class="resp ${r}">${avatar(o, 38)}<div><b>${esc(o.name)}</b><small>${LABEL[r]}</small></div>
+      ${r === 'accepted' ? `<button class="btn primary small" data-with="${i}">Mit ${esc(o.name)} tauschen</button>` : r === 'pending' ? '<span class="dots"><i></i><i></i><i></i></span>' : '<span class="no">✗</span>'}</li>`;
+  }).join('');
+  const accepted = Object.values(t.responses).filter((r) => r === 'accepted').length;
   const m = openModal(S.autoModal, `
-    <h2>Warte auf Antwort</h2>
-    <div class="modal-lede"><span class="lede-art">${ILLUS.trade}</span><div><span class="eyebrow">Ein Vorschlag unter Siedlern</span><b>Ein Angebot für ${esc(to.name)}</b><span class="hint">Deine Karten bleiben auf der Hand, bis das Angebot angenommen wird.</span></div></div>
+    <h2>Dein Angebot an alle</h2>
     <div class="trade-summary">
-      <div class="side">${avatar(you, 48)}<b>${esc(nameOf(S.you))}</b><small>gibt</small><div class="items">${resList(t.give)}</div></div>
-      <div class="swap waiting">⇄</div>
-      <div class="side">${avatar(to, 48)}<b>${esc(to.name)}</b><small>gibt</small><div class="items">${resList(t.get)}</div></div>
+      <div class="side">${avatar(you, 44)}<b>${esc(nameOf(S.you))}</b><small>gibt</small><div class="items">${resList(t.give)}</div></div>
+      <div class="swap ${accepted ? '' : 'waiting'}">⇄</div>
+      <div class="side"><span class="bank-ico big">👥</span><b>Mitspieler</b><small>geben</small><div class="items">${resList(t.get)}</div></div>
     </div>
-    <div class="modal-actions"><button class="btn primary block" id="tr-cancel">Angebot zurückziehen</button></div>`, { closable: false });
+    <p class="hint center">${accepted ? 'Wähle, mit wem du tauschen möchtest.' : 'Deine Karten bleiben auf der Hand, bis du einen Handelspartner wählst.'}</p>
+    <ul class="resp-list">${rows}</ul>
+    <div class="modal-actions"><button class="btn ghost block" id="tr-cancel">Angebot zurückziehen</button></div>`, { closable: false });
+  $$('[data-with]', m).forEach((b) => b.addEventListener('click', () => act('confirmTrade', { with: Number(b.dataset.with) })));
   $('#tr-cancel', m).addEventListener('click', () => act('cancelTrade'));
 }
 
-function openCountered() {
+function openAcceptedWait() {
   const st = S.state;
   const t = st.trade;
-  const to = st.players[t.to];
-  const p = me();
-  const canAccept = hasRes(p.resources, t.counter.get);
+  const from = st.players[t.from];
   const m = openModal(S.autoModal, `
-    <h2>Ein Gegenangebot</h2>
-    <div class="modal-lede">${avatar(to, 56)}<div><b>${esc(to.name)} hat andere Vorstellungen</b><span class="hint">Nimm das Gegenangebot an oder lehne ab.</span></div></div>
-    <div class="trade-summary">
-      <div class="side"><small>Du erhältst</small><div class="items">${resList(t.counter.give)}</div></div>
-      <div class="swap">⇄</div>
-      <div class="side"><small>Du gibst</small><div class="items">${resList(t.counter.get)}</div></div>
-    </div>
-    <div class="modal-actions">
-      <button class="btn danger" id="tr-decline">Ablehnen</button>
-      <button class="btn primary" id="tr-accept" ${canAccept ? '' : 'disabled'}>Annehmen</button>
-    </div>`, { closable: false });
-  $('#tr-accept', m).addEventListener('click', () => act('respondTrade', { response: 'accept' }));
-  $('#tr-decline', m).addEventListener('click', () => act('respondTrade', { response: 'decline' }));
+    <h2>Du hast angenommen</h2>
+    <div class="modal-lede"><span class="lede-art">${ILLUS.hourglass}</span><div><b>${esc(from.name)} wählt einen Handelspartner …</b>
+    <span class="hint">Du erhältst ${resList(t.give)} und gibst ${resList(t.get)}.</span></div></div>
+    <div class="modal-actions"><button class="btn ghost" id="tr-withdraw">Doch ablehnen</button></div>`, { closable: false });
+  $('#tr-withdraw', m).addEventListener('click', () => act('respondTrade', { response: 'decline' }));
 }
 
-function openCounterWait() {
-  const st = S.state;
-  openModal(S.autoModal, `
-    <h2>Dein Gegenangebot liegt aus</h2>
-    <div class="modal-lede"><span class="lede-art">${ILLUS.hourglass}</span><div><b>${esc(st.players[st.trade.from].name)} entscheidet …</b>
-    <span class="hint">Du gibst ${resList(st.trade.counter.give)} und erhältst ${resList(st.trade.counter.get)}.</span></div></div>`, { closable: false });
-}
 
-// Handelstisch: Bank & Häfen oder Mitspieler; auch für Gegenangebote
-function openTrade({ counter = false } = {}) {
+
+// Handelstisch: Tausch mit Bank & Häfen oder ein Angebot an alle Mitspieler
+function openTrade({ give: preset = null } = {}) {
   if (!me()) return;
-  if (!counter && !isMyMainPhase()) { toast('Handeln ist nur in deinem Zug nach dem Würfeln möglich.'); return; }
+  if (!isMyMainPhase()) { toast('Handeln ist nur in deinem Zug nach dem Würfeln möglich.'); return; }
   const st0 = S.state;
   const T = {
-    partner: counter ? st0.trade.from : 'bank',
+    partner: S.lastTradePartner || 'bank',
     give: Object.fromEntries(RESOURCES.map((r) => [r, 0])),
     get: Object.fromEntries(RESOURCES.map((r) => [r, 0])),
   };
-  if (counter) {
-    for (const r of RESOURCES) { T.give[r] = st0.trade.get[r] || 0; T.get[r] = st0.trade.give[r] || 0; }
-  }
+  if (preset) T.give[preset] = Math.min(me().resources[preset], T.partner === 'bank' ? harborRatios(st0, S.you)[preset] : 1);
   const draw = () => {
     const st = S.state;
     const p = me();
@@ -1498,7 +1561,6 @@ function openTrade({ counter = false } = {}) {
     const ratios = harborRatios(st, S.you);
     const bank = T.partner === 'bank';
     for (const r of RESOURCES) T.give[r] = Math.min(T.give[r], p.resources[r] - (p.resources[r] % (bank ? ratios[r] : 1)));
-    const partner = bank ? null : st.players[T.partner];
     let valid = resCount(T.give) > 0 && resCount(T.get) > 0 && hasRes(p.resources, T.give) && !RESOURCES.some((r) => T.give[r] && T.get[r]);
     let note = '';
     if (bank) {
@@ -1513,20 +1575,19 @@ function openTrade({ counter = false } = {}) {
       else note = 'Die Bank tauscht sofort.';
       if (!hasRes(st.bank, T.get)) { valid = false; note = 'Die Bank hat nicht genug davon.'; }
     } else {
-      note = `${esc(partner.name)} kann annehmen, ein Gegenangebot machen oder ablehnen. Die Hand bleibt geheim.`;
+      note = 'Alle Mitspieler sehen dein Angebot und können annehmen oder ablehnen. Nehmen mehrere an, wählst du, mit wem du tauschst.';
     }
-    const partnerTabs = counter ? '' : `<div class="partner-tabs">
-      <button class="partner ${bank ? 'active' : ''}" data-partner="bank"><span class="bank-ico">⚓</span><div><b>Bank & Häfen</b><small>Tausch mit dem Hafen</small></div></button>
-      ${others.map((o) => `<button class="partner ${T.partner === o.idx ? 'active' : ''}" data-partner="${o.idx}">${avatar(o, 30)}<div><b>${esc(o.name)}</b><small>${o.resourceCount} Karten</small></div></button>`).join('')}
-    </div>`;
-    const m = openModal(counter ? 'counter' : 'trade', `
-      <h2>${counter ? 'Gegenangebot' : 'Der Handelstisch'}</h2>
-      <div class="modal-lede"><span class="lede-art">${ILLUS.trade}</span><div><span class="eyebrow">Ein guter Tausch, eine wachsende Insel</span><b>Schaffe Raum für Möglichkeiten.</b><span class="hint">Wähle deinen Handelspartner und lege deine Karten auf den Tisch.</span></div></div>
-      ${partnerTabs}
+    const m = openModal('trade', `
+      <h2>Der Handelstisch</h2>
+      <div class="modal-lede"><span class="lede-art">${ILLUS.trade}</span><div><span class="eyebrow">Ein guter Tausch, eine wachsende Insel</span><b>Schaffe Raum für Möglichkeiten.</b><span class="hint">Tausche mit der Bank oder lege ein Angebot für alle auf den Tisch.</span></div></div>
+      <div class="partner-tabs two">
+        <button class="partner ${bank ? 'active' : ''}" data-partner="bank"><span class="bank-ico">⚓</span><div><b>Bank & Häfen</b><small>Sofort tauschen · ${Math.min(...Object.values(ratios))}:1 bestes Verhältnis</small></div></button>
+        <button class="partner ${bank ? '' : 'active'}" data-partner="all"><span class="avatars">${others.map((o) => avatar(o, 26)).join('')}</span><div><b>An alle Mitspieler</b><small>${others.length} Siedler · sie entscheiden selbst</small></div></button>
+      </div>
       <div class="trade-summary">
         <div class="side">${avatar(p, 44)}<b>${esc(nameOf(S.you))}</b><small>gibt</small><div class="items">${resList(T.give)}</div></div>
         <div class="swap">⇄</div>
-        <div class="side">${bank ? '<span class="bank-ico big">⚓</span><b>Bank</b>' : `${avatar(partner, 44)}<b>${esc(partner.name)}</b>`}<small>gibt</small><div class="items">${resList(T.get)}</div></div>
+        <div class="side">${bank ? '<span class="bank-ico big">⚓</span><b>Bank</b>' : '<span class="bank-ico big">👥</span><b>Mitspieler</b>'}<small>${bank ? 'gibt' : 'geben'}</small><div class="items">${resList(T.get)}</div></div>
       </div>
       <div class="trade-cols">
         <div><h3>📤 Du gibst</h3>${pickGrid('give-grid', { counts: T.give, have: p.resources, disabled: (r) => !p.resources[r], note: (r) => (bank ? ` · ${ratios[r]}:1` : '') })}</div>
@@ -1535,10 +1596,11 @@ function openTrade({ counter = false } = {}) {
       <p class="trade-note">${note}</p>
       <div class="modal-actions">
         <button class="btn ghost" id="tr-reset">Zurücksetzen</button>
-        <button class="btn primary" id="tr-submit" ${valid ? '' : 'disabled'}>${counter ? 'Gegenangebot senden' : bank ? 'Mit der Bank tauschen' : `Handel an ${esc(partner.name)} anbieten`}</button>
-      </div>`, { wide: true, onClose: () => { if (counter) { S.autoModal = null; renderAutoModal(true); } } });
+        <button class="btn primary" id="tr-submit" ${valid ? '' : 'disabled'}>${bank ? 'Mit der Bank tauschen' : 'Angebot an alle senden'}</button>
+      </div>`, { wide: true });
     $$('[data-partner]', m).forEach((b) => b.addEventListener('click', () => {
-      T.partner = b.dataset.partner === 'bank' ? 'bank' : Number(b.dataset.partner);
+      T.partner = b.dataset.partner;
+      S.lastTradePartner = T.partner;
       play('click');
       draw();
     }));
@@ -1560,18 +1622,15 @@ function openTrade({ counter = false } = {}) {
     $('#tr-submit', m).addEventListener('click', () => {
       const give = Object.fromEntries(RESOURCES.filter((r) => T.give[r]).map((r) => [r, T.give[r]]));
       const get = Object.fromEntries(RESOURCES.filter((r) => T.get[r]).map((r) => [r, T.get[r]]));
-      if (counter) {
-        act('respondTrade', { response: 'counter', give, get });
-        closeModal();
-      } else if (T.partner === 'bank') {
+      if (T.partner === 'bank') {
         act('bankTrade', { give, get });
         for (const r of RESOURCES) { T.give[r] = 0; T.get[r] = 0; }
       } else {
-        act('offerTrade', { to: T.partner, give, get });
+        act('offerTrade', { give, get });
         closeModal();
       }
     });
-    S.redrawTrade = counter ? null : draw;
+    S.redrawTrade = draw;
   };
   draw();
 }
@@ -1668,7 +1727,7 @@ const RULES = [
   },
   {
     tab: 'Handel & Bau', html: () => `<h3><span class="num-badge">3</span> Handel & Bau</h3>
-    <p>Nach dem Würfeln darfst du mit Mitspielern frei verhandeln oder mit der Bank tauschen: 4:1 immer, 3:1 an einem allgemeinen Hafen, 2:1 an einem Spezialhafen.</p>
+    <p>Nach dem Würfeln tauschst du mit der Bank (4:1 immer, 3:1 an einem allgemeinen Hafen, 2:1 an einem Spezialhafen) oder legst ein <b>Angebot für alle Mitspieler</b> auf den Tisch. Jeder nimmt an oder lehnt ab – nehmen mehrere an, wählst du, mit wem du tauschst.</p>
     <p>Hast du genug Rohstoffe, erscheinen mögliche Bauten als <b>leuchtende Hologramme</b> auf der Insel – ein Klick genügt.</p>
     <table class="cost-table">
       <tr><td>${iconArt('road', 26)} Straße</td><td>${costArt(COSTS.road, 22)}</td></tr>
@@ -1737,7 +1796,13 @@ function openSettings() {
         ${isHost ? '' : '<p class="hint">Nur der Gastgeber kann das Tempo ändern.</p>'}
       </section>
       <section><h3>🌊 Die Bewegung</h3><p class="hint">Lieber einen ruhigen Tisch? Halte Wasser und Kamera still.</p>
-        ${toggleHtml('set-cine', settings.cinematic, 'Kamerafahrten zu Würfeln, Erträgen & Räuber')}
+        ${toggleHtml('set-cine', settings.cinematic, 'Kamerafahrten (alle)')}
+        <div class="sub-toggles">
+          ${toggleHtml('set-camDice', settings.camDice, 'Zur Würfelschale')}
+          ${toggleHtml('set-camHarvest', settings.camHarvest, 'Zu den Feldern mit Ertrag')}
+          ${toggleHtml('set-camRobber', settings.camRobber, 'Zum Räuber')}
+          ${toggleHtml('set-camBuild', settings.camBuild, 'Zu neuen Bauten der Mitspieler')}
+        </div>
         ${toggleHtml('set-scene', settings.scenery, 'Bewegte Szenerie (Wellen, Boote, Wolken)')}
       </section>
     </div>`, { wide: true });
@@ -1748,6 +1813,9 @@ function openSettings() {
   $('#set-amb', m).addEventListener('change', (e) => { settings.ambience = e.target.checked; });
   $('#set-volume', m).addEventListener('input', (e) => { settings.volume = Number(e.target.value) / 100; $('#vol-val', m).textContent = `${e.target.value}%`; });
   $('#set-cine', m).addEventListener('change', (e) => { settings.cinematic = e.target.checked; });
+  for (const k of ['camDice', 'camHarvest', 'camRobber', 'camBuild']) {
+    $(`#set-${k}`, m).addEventListener('change', (e) => { settings[k] = e.target.checked; });
+  }
   $('#set-scene', m).addEventListener('change', (e) => { settings.scenery = e.target.checked; });
   $$('[data-sound]', m).forEach((b) => b.addEventListener('click', () => play(b.dataset.sound, true)));
   $$('[data-pace]', m).forEach((b) => b.addEventListener('click', () => {
@@ -1881,7 +1949,14 @@ function openGameMenu() {
 }
 
 function updateSoundBtn() {
-  $('#btn-sound').textContent = isSoundOn() ? '🔊' : '🔈';
+  $('#btn-sound').innerHTML = uiArt(isSoundOn() ? 'soundOn' : 'soundOff', 18);
+}
+
+function fillArt(root = document) {
+  $$('[data-art]', root).forEach((el) => {
+    const [name, size] = el.dataset.art.split(':');
+    el.innerHTML = uiArt(name, Number(size) || 24);
+  });
 }
 
 // ---------- Chat ----------
@@ -1904,6 +1979,8 @@ function bindGame() {
   $('#btn-settings').addEventListener('click', openSettings);
   $('#btn-sound').addEventListener('click', () => { toggleSound(); updateSoundBtn(); });
   $('#room-chip').addEventListener('click', copyInvite);
+  $('#foot-trade').addEventListener('click', () => openTrade());
+  fillArt();
   updateSoundBtn();
   $$('.log-tab').forEach((b) => b.addEventListener('click', () => {
     $$('.log-tab').forEach((x) => x.classList.toggle('active', x === b));
@@ -1924,7 +2001,7 @@ function bindGame() {
     const k = e.key.toLowerCase();
     if (k === 'escape') {
       if (S.tour) { stopTour(); return; }
-      if (S.modalKey && !['discard', 'incoming', 'waiting', 'countered', 'counterwait'].some((x) => (S.modalKey || '').startsWith(x))) {
+      if (S.modalKey && !['discard', 'incoming', 'offer', 'accepted'].some((x) => (S.modalKey || '').startsWith(x))) {
         const cb = S.modalOnClose;
         closeModal();
         if (cb) cb();

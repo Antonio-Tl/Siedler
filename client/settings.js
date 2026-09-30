@@ -7,7 +7,11 @@ const DEFAULTS = {
   sound: true,
   volume: 0.7,
   ambience: true, // Meeresrauschen
-  cinematic: true, // Kamerafahrten zu Würfeln, Erträgen und Räuber
+  cinematic: true, // Kamerafahrten insgesamt
+  camDice: true, // zur Würfelschale
+  camHarvest: true, // zu den Feldern mit Ertrag
+  camRobber: true, // zum Räuber
+  camBuild: true, // zu neuen Bauten der Mitspieler
   scenery: true, // bewegtes Wasser, Boote, Wolken
   holograms: true, // Bauvorschau auf dem Brett
 };

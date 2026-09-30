@@ -429,7 +429,10 @@ export function pendingActors(state) {
   if (state.phase === 'setup') return [state.current];
   if (state.phase !== 'play') return [];
   if (state.turn.pending === 'discard') return Object.keys(state.turn.discards).map(Number);
-  if (state.trade && state.trade.status === 'pending') return [state.trade.to];
+  if (state.trade) {
+    const waiting = Object.entries(state.trade.responses).filter(([, r]) => r === 'pending').map(([i]) => Number(i));
+    return waiting.length ? waiting : [state.trade.from];
+  }
   return [state.current];
 }
 
@@ -745,69 +748,67 @@ const HANDLERS = {
     return null;
   },
 
-  offerTrade(state, idx, { to, give, get }) {
+  // Angebot an alle Mitspieler; jeder nimmt an oder lehnt ab, der Anbieter wählt unter den Zusagen
+  offerTrade(state, idx, { give, get }) {
     const e = requireMain(state, idx);
     if (e) return e;
     if (!validResMap(give) || !validResMap(get)) return 'Ungültiges Angebot.';
-    if (!state.players[to] || to === idx) return 'Wähle einen Handelspartner.';
     if (!resCount(give) || !resCount(get)) return 'Biete etwas an und wünsche dir etwas.';
     if (RESOURCES.some((r) => give[r] && get[r])) return 'Tausche nicht denselben Rohstoff.';
     const p = state.players[idx];
     if (!hasRes(p.resources, give)) return 'So viele Karten hast du nicht.';
     state.tradeSeq = (state.tradeSeq || 0) + 1;
-    state.trade = { id: state.tradeSeq, from: idx, to, give: { ...give }, get: { ...get }, status: 'pending', counter: null };
-    addLog(state, idx, `${p.name} bietet ${state.players[to].name} einen Handel an.`, 'trade');
+    const responses = {};
+    for (const o of state.players) if (o.idx !== idx) responses[o.idx] = 'pending';
+    state.trade = { id: state.tradeSeq, from: idx, give: { ...give }, get: { ...get }, responses };
+    addLog(state, idx, `${p.name} bietet allen ${fmtRes(give)} für ${fmtRes(get)}.`, 'trade');
+    addEvent(state, { type: 'tradeOffer', from: idx, id: state.tradeSeq });
     return null;
   },
 
-  respondTrade(state, idx, { response, give, get }) {
+  respondTrade(state, idx, { response }) {
     const t = state.trade;
     if (!t) return 'Kein offenes Angebot.';
-    if (t.status === 'pending') {
-      if (t.to !== idx) return 'Dieses Angebot gilt nicht dir.';
-      const from = state.players[t.from];
-      const me = state.players[idx];
-      if (response === 'accept') {
-        if (!hasRes(me.resources, t.get)) return 'Dir fehlen die gewünschten Karten.';
-        if (!hasRes(from.resources, t.give)) { state.trade = null; return 'Der Anbieter hat die Karten nicht mehr.'; }
-        swap(state, from, me, t.give, t.get);
-        state.trade = null;
-        return null;
-      }
-      if (response === 'decline') {
-        addLog(state, idx, `${me.name} lehnt das Angebot ab.`, 'trade');
-        addEvent(state, { type: 'tradeDeclined', from: t.from, to: idx });
-        state.trade = null;
-        return null;
-      }
-      if (response === 'counter') {
-        if (!validResMap(give) || !validResMap(get) || !resCount(give) || !resCount(get)) return 'Ungültiges Gegenangebot.';
-        if (!hasRes(me.resources, give)) return 'So viele Karten hast du nicht.';
-        t.status = 'countered';
-        t.counter = { give: { ...give }, get: { ...get } }; // aus Sicht des Antwortenden
-        addLog(state, idx, `${me.name} macht ein Gegenangebot.`, 'trade');
-        return null;
-      }
-      return 'Ungültige Antwort.';
+    if (t.from === idx || !(idx in t.responses)) return 'Dieses Angebot gilt nicht dir.';
+    const me = state.players[idx];
+    if (response === 'accept') {
+      if (t.responses[idx] === 'accepted') return null;
+      if (t.responses[idx] === 'declined') return 'Du hast bereits abgelehnt.';
+      if (!hasRes(me.resources, t.get)) return 'Dir fehlen die gewünschten Karten.';
+      t.responses[idx] = 'accepted';
+      addLog(state, idx, `${me.name} nimmt das Angebot an.`, 'trade');
+      addEvent(state, { type: 'tradeAccepted', from: t.from, by: idx });
+      return null;
     }
-    if (t.status === 'countered') {
-      if (t.from !== idx) return 'Warte auf den Anbieter.';
-      const other = state.players[t.to];
-      const me = state.players[idx];
-      if (response === 'accept') {
-        if (!hasRes(me.resources, t.counter.get)) return 'Dir fehlen die gewünschten Karten.';
-        if (!hasRes(other.resources, t.counter.give)) { state.trade = null; return 'Der Partner hat die Karten nicht mehr.'; }
-        swap(state, other, me, t.counter.give, t.counter.get);
+    if (response === 'decline') {
+      if (t.responses[idx] === 'declined') return null;
+      t.responses[idx] = 'declined';
+      addLog(state, idx, `${me.name} lehnt das Angebot ab.`, 'trade');
+      if (Object.values(t.responses).every((r) => r === 'declined')) {
+        addLog(state, t.from, 'Niemand möchte tauschen – das Angebot ist vom Tisch.', 'trade');
+        addEvent(state, { type: 'tradeDeclined', from: t.from });
         state.trade = null;
-        return null;
       }
-      if (response === 'decline') {
-        addLog(state, idx, `${me.name} lehnt das Gegenangebot ab.`, 'trade');
-        state.trade = null;
-        return null;
-      }
+      return null;
     }
     return 'Ungültige Antwort.';
+  },
+
+  // Der Anbieter wählt, mit wem er tauscht
+  confirmTrade(state, idx, { with: partner }) {
+    const t = state.trade;
+    if (!t || t.from !== idx) return 'Kein eigenes offenes Angebot.';
+    if (t.responses[partner] !== 'accepted') return 'Dieser Spieler hat nicht angenommen.';
+    const me = state.players[idx];
+    const other = state.players[partner];
+    if (!hasRes(me.resources, t.give)) return 'Dir fehlen die angebotenen Karten.';
+    if (!hasRes(other.resources, t.get)) {
+      t.responses[partner] = 'declined';
+      return `${other.name} hat die Karten nicht mehr.`;
+    }
+    swap(state, me, other, t.give, t.get);
+    state.trade = null;
+    return null;
   },
 
   cancelTrade(state, idx) {

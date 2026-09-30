@@ -187,13 +187,6 @@ function respondToTrade(state, idx) {
   const gain = valueOf(t.give, weights);
   const loss = valueOf(t.get, weights);
   if (gain >= loss + 0.1) return { type: 'respondTrade', response: 'accept' };
-  // Gegenangebot: 1:1 gegen etwas, das wir wirklich brauchen
-  const wanted = Object.keys(missing).find((r) => (t.give[r] || 0) > 0) || Object.keys(missing)[0];
-  const spare = RESOURCES.filter((r) => r !== wanted && me.resources[r] > (goal?.cost[r] || 0))
-    .sort((a, b) => me.resources[b] - me.resources[a])[0];
-  if (wanted && spare && Math.random() < 0.5) {
-    return { type: 'respondTrade', response: 'counter', give: { [spare]: 1 }, get: { [wanted]: 1 } };
-  }
   return { type: 'respondTrade', response: 'decline' };
 }
 
@@ -207,11 +200,13 @@ export function botAction(state, idx) {
   const t = state.turn;
   if (t.pending === 'discard') return t.discards[idx] ? discardAction(state, idx) : null;
   if (state.trade) {
-    if (state.trade.status === 'pending' && state.trade.to === idx) return respondToTrade(state, idx);
-    if (state.trade.status === 'countered' && state.trade.from === idx) {
-      const c = state.trade.counter;
-      const ok = hasRes(p.resources, c.get) && valueOf(c.give, {}) >= valueOf(c.get, {});
-      return { type: 'respondTrade', response: ok ? 'accept' : 'decline' };
+    const tr = state.trade;
+    if (tr.responses[idx] === 'pending') return respondToTrade(state, idx);
+    // Als Anbieter (z. B. Autopilot für getrennte Spieler): erste Zusage nehmen, sonst zurückziehen
+    if (tr.from === idx) {
+      const accepted = Object.keys(tr.responses).find((i) => tr.responses[i] === 'accepted');
+      if (accepted !== undefined) return { type: 'confirmTrade', with: Number(accepted) };
+      if (!Object.values(tr.responses).includes('pending')) return { type: 'cancelTrade' };
     }
     return null;
   }
@@ -284,6 +279,6 @@ export function botAction(state, idx) {
 export function botDelay(state) {
   if (state.phase === 'setup') return 650;
   if (state.turn.pending === 'discard') return 500;
-  if (state.trade) return 1300;
+  if (state.trade) return 800 + Math.random() * 700;
   return state.turn.rolled ? 750 : 1100;
 }

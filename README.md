@@ -66,7 +66,8 @@ Jede Partie wird **automatisch gespeichert** – auch über einen Neustart hinwe
 ![Hologramm einer Stadt über der Siedlung](docs/screenshots/hologramme.jpg)
 
 - **Hologramm-Bauvorschau:** Sobald du dir etwas leisten kannst, erscheinen alle möglichen Straßen, Siedlungen und Städte als leuchtende Hologramme in deiner Farbe. Ein Klick genügt zum Bauen – beim Überfahren siehst du Kosten und Erträge.
-- **Kamerafahrten:** Beim Würfeln fliegt die Kamera zur Würfelschale, dann zu den Feldern mit Ertrag. Die Felder leuchten auf, Rohstoffe steigen auf und fliegen in deine Hand. Bei einer 7 erwacht der Räuber.
+- **Kamerafahrten:** Beim Würfeln fliegt die Kamera zur Würfelschale, dann zu den Feldern mit Ertrag. Die Felder leuchten auf, Rohstoffe steigen auf und fliegen in deine Hand. Bei einer 7 erwacht der Räuber. Baut ein Mitspieler eine Straße, Siedlung oder Stadt, zeigt die Kamera den neuen Bau.
+- **Kamerafahrten abschalten:** Der Knopf **🎥 Kamerafahrten** oben rechts auf dem Brett schaltet alle Fahrten aus; unter ⚙ lassen sich Würfel, Erträge, Räuber und Bauten einzeln an- und abschalten.
 - **Lebendige Insel:** Wälder, Schafe, Weizenfelder, Berge, Häfen mit Stegen, Brandung, Wolken und Segelboote. Figuren fallen mit Staubwolke aufs Brett, Straßen wachsen ein, der Räuber hüpft.
 - **Geführte Inseltour**, illustriertes **Regelbuch**, **Chronik**, **Chat** und Feuerwerk beim Sieg.
 
@@ -89,7 +90,9 @@ Jede Partie wird **automatisch gespeichert** – auch über einen Neustart hinwe
 
 ### Einstellungen („An deinem Tisch“ ⚙)
 
-Grafikqualität (Hoch/Mittel/Niedrig), Klang und Lautstärke mit Klangvorschau, Meeresrauschen, Tempo der KI, Kamerafahrten, bewegte Szenerie und die Hologramm-Vorschau lassen sich jederzeit anpassen.
+Grafikqualität (Hoch/Mittel/Niedrig), Klang und Lautstärke mit Klangvorschau, Meeresrauschen, Tempo der KI, Kamerafahrten (insgesamt oder einzeln für Würfel, Erträge, Räuber und Bauten), bewegte Szenerie und die Hologramm-Vorschau lassen sich jederzeit anpassen.
+
+Tipp: Ein Klick auf eine Rohstoffkarte in deiner Hand öffnet direkt den Handelstisch mit diesem Rohstoff.
 
 ---
 
@@ -101,7 +104,7 @@ Grafikqualität (Hoch/Mittel/Niedrig), Klang und Lautstärke mit Klangvorschau, 
 - **Bei einer 7:** Wer mehr als 7 Karten hat, gibt die Hälfte ab. Der Räuber blockiert ein Feld und stiehlt eine Karte.
 - **Bauen:** Straße (Holz, Lehm) · Siedlung (Holz, Lehm, Wolle, Getreide) · Stadt (2 Getreide, 3 Erz) · Entwicklungskarte (Wolle, Getreide, Erz).
 - **Entwicklungskarten:** Ritter, Straßenbau, Erfindung, Monopol, Siegpunkt.
-- **Handel:** mit der Bank (4:1, an Häfen 3:1 oder 2:1) und mit Mitspielern inklusive Gegenangebot.
+- **Handel:** mit der Bank (4:1, an Häfen 3:1 oder 2:1) oder als Angebot an alle Mitspieler. Jeder nimmt an oder lehnt ab; nehmen mehrere an, wählst du, mit wem du tauschst.
 - **Sonderpunkte:** Längste Handelsstraße (ab 5) und Größte Rittermacht (ab 3 Rittern) bringen je 2 Punkte.
 - Wer in seinem Zug die Zielpunktzahl erreicht, gewinnt.
 
