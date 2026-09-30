@@ -1,6 +1,8 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "siedlungen", "runtimeExecutable": "node", "runtimeArgs": ["server/index.js"], "port": 5274 }
+    { "name": "siedlungen", "runtimeExecutable": "node", "runtimeArgs": ["server/index.js"], "port": 5274 },
+    { "name": "siedlungen-cloudflare", "runtimeExecutable": "npx", "runtimeArgs": ["wrangler", "dev", "--port", "8787"], "port": 8787 },
+    { "name": "siedlungen-cloudflare-schnell", "runtimeExecutable": "npx", "runtimeArgs": ["wrangler", "dev", "--port", "8788", "--inspector-port", "9230", "--var", "BOT_DELAY_SCALE:0.02"], "port": 8788 }
   ]
 }

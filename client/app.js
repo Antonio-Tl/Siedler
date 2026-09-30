@@ -124,6 +124,11 @@ function connect() {
   };
 }
 
+// Lebenszeichen, damit Leitungen nicht einschlafen (Cloudflare antwortet mit „pong“, Node ignoriert es)
+setInterval(() => {
+  if (S.ws && S.ws.readyState === 1) S.ws.send('ping');
+}, 25_000);
+
 function send(msg) {
   if (S.ws && S.ws.readyState === 1) S.ws.send(JSON.stringify(msg));
   else toast('Keine Verbindung zum Server.');

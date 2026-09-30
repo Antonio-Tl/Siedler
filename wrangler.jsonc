@@ -1,0 +1,26 @@
+// Cloudflare-Konfiguration (Workers + Durable Objects). Anleitung: README.md → „Online bei Cloudflare“.
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "siedlungen",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Statische Dateien (Spiel im Browser) – dist/ wird vor jedem dev/deploy neu gebaut
+  "build": {
+    "command": "node scripts/build-cloudflare.js",
+    "watch_dir": ["client", "shared"]
+  },
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS"
+  },
+
+  // Ein Durable Object hält alle Räume, Verbindungen und Speicherstände (SQLite, auch im Gratis-Tarif)
+  "durable_objects": {
+    "bindings": [{ "name": "LOBBY", "class_name": "Lobby" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Lobby"] }],
+
+  "observability": { "enabled": true }
+}

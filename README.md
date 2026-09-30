@@ -55,9 +55,21 @@ Jede Partie wird **automatisch gespeichert** – auch über einen Neustart hinwe
 ### Mit Freunden spielen
 
 - **Im selben WLAN:** Beim Start zeigt das Terminal eine Adresse wie `http://192.168.1.23:5274`. Diese Adresse (mit Raumcode bzw. Einladungslink) an die Mitspieler schicken.
-- **Über das Internet:** Der Port 5274 muss von außen erreichbar sein – z. B. per Portweiterleitung im Router, über [Tailscale](https://tailscale.com) oder einen Tunnel-Dienst wie `ngrok http 5274`.
+- **Über das Internet:** Am einfachsten [online bei Cloudflare](#online-bei-cloudflare) – dann braucht es keinen eigenen Rechner. Alternativ muss Port 5274 von außen erreichbar sein, z. B. per Portweiterleitung, [Tailscale](https://tailscale.com) oder `ngrok http 5274`.
 - **Verbindung verloren?** Einfach neu laden – dein Platz bleibt reserviert. In Online-Partien spielt nach 45 Sekunden eine KI für dich weiter, bis du zurück bist.
 - Mehrere Browser-Tabs auf einem Rechner gelten als verschiedene Spieler – praktisch zum Ausprobieren.
+
+### Online bei Cloudflare
+
+Das Spiel läuft auch komplett bei Cloudflare (Workers + Durable Objects, im Gratis-Tarif nutzbar) – ohne eigenen Server und ohne dass dein Rechner an sein muss:
+
+```bash
+npm install
+npx wrangler login   # einmalig: mit dem Cloudflare-Konto verbinden
+npm run cf:deploy    # hochladen – danach unter https://siedlungen.<dein-name>.workers.dev erreichbar
+```
+
+Alternativ im Cloudflare-Dashboard unter *Workers & Pages → Erstellen → Repository importieren* dieses Git-Repository verbinden; dann wird bei jedem Push automatisch neu veröffentlicht. Zum lokalen Ausprobieren der Cloudflare-Version: `npm run cf:dev` (Port 8787).
 
 ---
 
@@ -119,6 +131,8 @@ npm install        # Abhängigkeiten
 npm start          # Server starten (Port 5274)
 npm run dev        # Server mit automatischem Neustart bei Änderungen
 npm test           # alle Tests: Regeln, KI-Partien, Online-, Hot-Seat- und Speicher-Tests
+npm run cf:dev     # Cloudflare-Version lokal (Wrangler, Port 8787)
+npm run cf:deploy  # Cloudflare-Version veröffentlichen
 ```
 
 | Umgebungsvariable | Bedeutung | Standard |
@@ -135,7 +149,10 @@ Beispiel: `PORT=8080 ./start.command` bzw. unter Windows `set PORT=8080` und dan
 | --- | --- |
 | `start.command` / `start.bat` | Startdateien für macOS/Linux bzw. Windows |
 | `shared/engine.js` | Regel-Engine – läuft identisch auf Server und Client |
-| `server/index.js` | Express + WebSocket: Räume, Lobby, Hot-Seat, Speicherstände, Wiederverbinden |
+| `server/lobby.js` | Räume, Lobby, Hot-Seat, Wiederverbinden, Bot-Takt – gemeinsam für Node und Cloudflare |
+| `server/index.js` | Node-Server: Express + WebSocket, Speicherstände in `data/rooms.json` |
+| `worker/index.js` | Cloudflare-Version: Worker + Durable Object (Speicherstände in dessen SQLite-Datenbank) |
+| `wrangler.jsonc`, `scripts/build-cloudflare.js` | Cloudflare-Konfiguration und Build der statischen Dateien nach `dist/` |
 | `server/bot.js` | KI-Siedler |
 | `client/app.js` | Oberfläche, Menü, Dialoge, Handel, Tour, Kamerafahrten |
 | `client/board3d.js` | Three.js-Szene: Kamera, Figuren, Hologramme, Würfel, Effekte |
