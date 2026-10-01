@@ -50,7 +50,7 @@ Danach <http://localhost:5274> im Browser öffnen.
 - **Mit Freunden** – Raum erstellen und den Einladungslink oder den 5-stelligen Code teilen. Freie Plätze füllt der Gastgeber auf Wunsch mit KI-Siedlern.
 - **An einem Gerät (Hot-Seat)** – 2–4 Spieler reichen den Bildschirm reihum weiter. Zwischen den Zügen erscheint ein Vorhang, damit niemand fremde Karten sieht.
 
-Jede Partie wird **automatisch gespeichert** – auch über einen Neustart hinweg. Im Menü findest du *„Letzte Partie fortsetzen“* und *„Gespeicherte Partien“*.
+Jede Partie wird **automatisch gespeichert** – auch über einen Neustart hinweg. Im Hauptmenü findest du *„Weiterspielen“*, *„Gespeicherte Partien“*, das Regelbuch, die Einstellungen und unter *„Erweiterungen“* eine Vorschau auf kommende Inhalte (5–6 Spieler, Seefahrer, Städte & Ritter, Händler & Barbaren, Entdecker & Piraten – noch *coming soon*).
 
 ### Mit Freunden spielen
 
@@ -157,7 +157,7 @@ Beispiel: `PORT=8080 ./start.command` bzw. unter Windows `set PORT=8080` und dan
 | `client/app.js` | Oberfläche, Menü, Dialoge, Handel, Tour, Kamerafahrten |
 | `client/board3d.js` | Three.js-Szene: Kamera, Figuren, Hologramme, Würfel, Effekte |
 | `client/three/` | Texturen, handgemalte Gelände mit Normal-Maps (`terrain.js`), 3D-Modelle (Figuren, Räuber, Deko, Häfen) und Wasser |
-| `client/art.js` | SVG-Grafiken: Rohstoffe, Porträts, Icons, Illustrationen |
+| `client/art.js`, `client/art/` | SVG-Grafiken: Rohstoffe, Porträts (`portraits.js`), Linien-Icons (`icons.js`), farbige Motive (`emblems.js`) und große Illustrationen (`scenes.js`) |
 | `test/` | automatisierte Tests |
 
 Der Server ist autoritativ: Alle Spielzüge werden dort geprüft, jeder Spieler bekommt nur seine eigenen Handkarten zu sehen.
