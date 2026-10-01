@@ -7,12 +7,14 @@ import {
 import { Board3D } from './board3d.js';
 import { play, toggleSound, isSoundOn, SOUNDS } from './sound.js';
 import { settings, onSettingsChange } from './settings.js';
-import { resourceArt, portraitArt, iconArt, devArt, uiArt, ILLUS } from './art.js';
+import {
+  resourceArt, portraitArt, iconArt, devArt, uiArt, ILLUS, emblem, icon, modeArt, expansionArt,
+} from './art.js';
 
-const TERRAIN_EMOJI = { forest: '🌲', hills: '🧱', pasture: '🐑', fields: '🌾', mountains: '⛰️', desert: '🏜️' };
-const LOG_ICON = {
-  island: '🏝️', compass: '🧭', dice: '🎲', harvest: '🌾', robber: '🥷', discard: '🗑️', steal: '🫳', house: '🏠', city: '🏰',
-  road: '🛤️', card: '🃏', sword: '⚔️', trade: '🤝', bank: '🏦', crown: '👑', scroll: '📜',
+// Chronik-Einträge: Symbolname aus der Spiellogik → farbiges Motiv
+const LOG_EMBLEM = {
+  island: 'island', compass: 'compass', dice: 'dice', harvest: 'harvest', robber: 'robber', discard: 'discard', steal: 'steal',
+  house: 'house', city: 'city', road: 'road', card: 'card', sword: 'sword', trade: 'trade', bank: 'bank', crown: 'crown', scroll: 'scroll',
 };
 const COLOR_HEX = Object.fromEntries(PLAYER_COLORS.map((c) => [c.id, c.hex]));
 const COLOR_LABEL = Object.fromEntries(PLAYER_COLORS.map((c) => [c.id, c.label]));
@@ -230,18 +232,35 @@ function myName() {
 function showMenu(view = 'home') {
   document.body.classList.add('menu-open');
   $('#menu-screen').hidden = false;
-  $('#menu-home').hidden = view !== 'home';
-  $('#menu-games').hidden = view !== 'games';
-  $('#menu-room').hidden = view !== 'room';
+  S.menuView = view;
+  for (const v of ['home', 'games', 'expansions', 'room']) $(`#menu-${v}`).hidden = view !== v;
+  $$('#menu-nav [data-view]').forEach((b) => b.classList.toggle('active', b.dataset.view === view));
+  $('#menu-shell').classList.toggle('in-room', view === 'room');
   if (view === 'room') renderRoom();
   if (view === 'games') renderGames();
   if (view === 'home') renderMenuMode();
+  if (view === 'expansions') renderExpansions();
+  $('#menu-stage').scrollTop = 0;
+  requestAnimationFrame(frameMenuIsland);
 }
 
 function hideMenu() {
   document.body.classList.remove('menu-open');
   $('#menu-screen').hidden = true;
+  S.board?.setViewShift(0);
+  S.board?.setMenuMode(false);
 }
+
+// Die Insel im Hintergrund mittig in den freien Raum zwischen Navigation und Bühne rücken
+function frameMenuIsland() {
+  if (!S.board || $('#menu-screen').hidden) return;
+  const nav = $('.menu-nav').getBoundingClientRect();
+  const stage = $('#menu-stage').getBoundingClientRect();
+  const wide = innerWidth > 900;
+  S.board.setViewShift(wide ? (nav.right + stage.left) / 2 - innerWidth / 2 : 0);
+  S.board.setMenuMode(true, wide ? stage.left - nav.right : innerWidth);
+}
+window.addEventListener('resize', () => requestAnimationFrame(frameMenuIsland));
 
 // Eine zufällig besiedelte Insel als lebendiger Hintergrund des Menüs
 function showDemo() {
@@ -279,24 +298,26 @@ function showDemo() {
 
 function renderResume() {
   const games = S.games.filter((g) => g.phase !== 'ended');
-  $('#resume-row').hidden = !S.games.length;
-  $('#autosave-note').hidden = !S.games.length;
   $('#saved-count').textContent = String(S.games.length);
+  $('#saved-count').hidden = !S.games.length;
   const last = games[0];
-  $('#btn-continue').disabled = !last;
+  $('#btn-continue').hidden = !last;
+  if (!last) return;
   $('#continue-art').innerHTML = ILLUS.island;
-  $('#continue-sub').textContent = last ? `${last.island} · Runde ${last.round || 1}${last.hotseat ? ' · an einem Gerät' : ''}` : 'Keine laufende Partie';
+  $('#continue-title').textContent = last.island;
+  $('#continue-sub').textContent = `${last.phase === 'setup' ? 'Gründungsphase' : `Runde ${last.round || 1}`}${last.hotseat ? ' · an einem Gerät' : ''} · ${timeAgo(last.lastActive)}`;
 }
 
 function renderGames() {
   const list = $('#games-list');
   if (!S.games.length) {
-    list.innerHTML = '<li class="games-empty">Noch keine gespeicherten Partien. Beginne ein neues Abenteuer!</li>';
+    list.innerHTML = `<li class="games-empty">${emblem('island', 72)}<b>Noch keine gespeicherten Partien</b><span>Beginne ein neues Abenteuer – jede Insel wird automatisch gesichert.</span><button class="btn primary" data-goto="home">Neues Spiel</button></li>`;
+    $('[data-goto]', list).addEventListener('click', () => { play('page'); showMenu('home'); });
     return;
   }
   list.innerHTML = S.games.map((g) => {
     const status = g.phase === 'ended'
-      ? `👑 ${esc(g.players[g.winner]?.name || '')} hat gewonnen`
+      ? `${icon('crown', 12)} ${esc(g.players[g.winner]?.name || '')} hat gewonnen`
       : g.phase === 'setup' ? 'Gründungsphase' : `Runde ${g.round} · Zug ${g.turn}`;
     return `<li class="game-item">
       <div class="game-art">${ILLUS.island}</div>
@@ -304,17 +325,60 @@ function renderGames() {
         <b>${esc(g.island)}</b>
         <small>${status} · ${timeAgo(g.lastActive)}${g.hotseat ? ' · an einem Gerät' : ''}</small>
         <div class="game-players">${g.players.map((p, i) => `<span class="gp ${i === g.you ? 'me' : ''}" title="${esc(p.name)}">${portraitArt(i, COLOR_HEX[p.color], 24)}</span>`).join('')}
-          <span class="gvp">👑 ${g.vp}/${g.vpToWin}</span></div>
+          <span class="gvp">${icon('crown', 12)} ${g.vp}/${g.vpToWin}</span></div>
       </div>
       <div class="game-actions">
         <button class="btn small primary" data-join="${g.code}">${g.phase === 'ended' ? 'Ansehen' : 'Fortsetzen'}</button>
-        <button class="btn small ghost" data-del="${g.code}" title="Aus der Liste entfernen">🗑</button>
+        <button class="btn small ghost icon-btn" data-del="${g.code}" title="Aus der Liste entfernen">${icon('trash', 16)}</button>
       </div></li>`;
   }).join('');
   $$('[data-join]', list).forEach((b) => b.addEventListener('click', () => send({ t: 'joinRoom', code: b.dataset.join })));
   $$('[data-del]', list).forEach((b) => b.addEventListener('click', () => {
     if (confirm('Diese Partie aus deiner Liste entfernen? Du verlässt damit deinen Platz.')) send({ t: 'deleteGame', code: b.dataset.del });
   }));
+}
+
+// Erweiterungen: noch nicht spielbar, aber schon zu sehen
+const EXPANSION_INFO = [
+  {
+    id: 'players', name: 'Für 5–6 Spieler', eyebrow: 'Mehr Platz am Tisch', players: '5–6 Siedler',
+    text: 'Eine größere Insel mit 30 Landfeldern, zwei zusätzliche Hausfarben und eine Sonderbauphase, in der alle zwischen den Zügen bauen dürfen.',
+    tags: [['users', 'Grün & Violett'], ['island', '30 Felder · 11 Häfen'], ['house', 'Sonderbauphase']],
+  },
+  {
+    id: 'seafarers', name: 'Seefahrer', eyebrow: 'Setz die Segel', players: '3–4 Siedler',
+    text: 'Schiffe verbinden ganze Inselgruppen, im Nebel warten unentdeckte Länder und Goldflüsse lassen dich deinen Rohstoff frei wählen.',
+    tags: [['ship', 'Schiffe statt Straßen'], ['compass', 'Unbekannte Inseln'], ['coin', 'Goldfluss']],
+  },
+  {
+    id: 'knights', name: 'Städte & Ritter', eyebrow: 'Wachse über dich hinaus', players: '3–4 Siedler',
+    text: 'Handelswaren wie Tuch, Münzen und Papier, prächtige Stadtausbauten bis zur Metropole und Ritter, die die Insel gegen Barbaren verteidigen.',
+    tags: [['helmet', 'Ritter & Barbaren'], ['city', 'Metropolen'], ['scroll', 'Fortschrittskarten']],
+  },
+  {
+    id: 'merchants', name: 'Händler & Barbaren', eyebrow: 'Neue Geschichten', players: '2–4 Siedler',
+    text: 'Szenarien voller Leben: Fischer am Ufer, Flüsse mit Brücken, Karawanen durch die Wüste und Händler, die über die Insel ziehen.',
+    tags: [['bank', 'Fischer & Flüsse'], ['desert', 'Karawanen'], ['trade', 'Händlerzüge']],
+  },
+  {
+    id: 'pirates', name: 'Entdecker & Piraten', eyebrow: 'Auf zu fernen Küsten', players: '3–4 Siedler',
+    text: 'Gründe Siedlungen mit dem Schiff, erfülle Missionen, bekämpfe Piratenlager und bring Gewürze und Fisch zurück in deinen Hafen.',
+    tags: [['chest', 'Missionen'], ['sword', 'Piratenlager'], ['harvest', 'Gewürzinseln']],
+  },
+];
+
+function renderExpansions() {
+  const grid = $('#exp-grid');
+  if (grid.childElementCount) return;
+  grid.innerHTML = EXPANSION_INFO.map((x) => `<article class="exp-card">
+    <div class="exp-art">${expansionArt(x.id)}<span class="exp-ribbon">Coming soon</span></div>
+    <div class="exp-body">
+      <div class="eyebrow">${x.eyebrow} · ${x.players}</div>
+      <h3>${x.name}</h3>
+      <p>${x.text}</p>
+      <ul class="exp-tags">${x.tags.map(([e, t]) => `<li>${emblem(e, 18)}${t}</li>`).join('')}</ul>
+      <button class="btn small block" disabled>${icon('lock', 14)} Coming soon</button>
+    </div></article>`).join('');
 }
 
 function timeAgo(ts) {
@@ -335,17 +399,17 @@ function renderMenuMode() {
   if (m === 'ai') {
     const n = Number($('#solo-bots').value);
     $('#mode-desc').textContent = `Du und ${n === 1 ? 'ein KI-Siedler' : `${n} KI-Siedler`}. Eine frische Insel und ein Wettlauf zu ${$('#solo-vp').value} Siegpunkten.`;
-    $('#btn-go').textContent = 'Die Insel besiedeln →';
+    $('#btn-go').innerHTML = `Die Insel besiedeln ${icon('arrowRight', 18)}`;
   } else if (m === 'friends') {
     const code = $('#code-input').value.trim();
     $('#mode-desc').textContent = code
       ? `Tritt dem Raum ${code.toUpperCase()} bei.`
       : 'Erstelle einen privaten Raum und teile den Link. Freie Plätze kannst du mit KI-Siedlern füllen.';
-    $('#btn-go').textContent = code ? 'Raum beitreten →' : 'Raum erstellen →';
+    $('#btn-go').innerHTML = `${code ? 'Raum beitreten' : 'Raum erstellen'} ${icon('arrowRight', 18)}`;
   } else {
     renderHotseatNames();
     $('#mode-desc').textContent = 'Reicht das Gerät reihum weiter. Eure Karten bleiben verdeckt, bis ihr am Zug seid.';
-    $('#btn-go').textContent = 'Gemeinsam beginnen →';
+    $('#btn-go').innerHTML = `Gemeinsam beginnen ${icon('arrowRight', 18)}`;
   }
 }
 
@@ -355,7 +419,7 @@ function renderHotseatNames() {
   box.innerHTML = S.hsNames.map((n, i) => `<div class="hs-row">
     ${portraitArt(i, PLAYER_COLORS[i].hex, 30)}
     <input maxlength="18" value="${esc(n)}" data-hs="${i}" placeholder="Spieler ${i + 1}" />
-    ${S.hsNames.length > 2 ? `<button class="btn small ghost" data-hs-del="${i}" title="Entfernen">✕</button>` : ''}
+    ${S.hsNames.length > 2 ? `<button class="btn small ghost icon-btn" data-hs-del="${i}" title="Entfernen">${icon('close', 15)}</button>` : ''}
   </div>`).join('');
   $$('[data-hs]', box).forEach((inp) => inp.addEventListener('input', () => { S.hsNames[Number(inp.dataset.hs)] = inp.value; }));
   $$('[data-hs-del]', box).forEach((b) => b.addEventListener('click', () => { S.hsNames.splice(Number(b.dataset.hsDel), 1); renderHotseatNames(); }));
@@ -381,12 +445,12 @@ function renderRoom() {
     const swatches = PLAYER_COLORS.map((c) => `<button class="swatch ${s.color === c.id ? 'sel' : ''}" style="background:${c.hex}" data-seat="${i}" data-color="${c.id}" ${canColor && (!used.has(c.id) || s.color === c.id) ? '' : 'disabled'} title="${c.label}"></button>`).join('');
     return `<li class="seat">
       ${portraitArt(i, COLOR_HEX[s.color], 40)}
-      <div class="name">${esc(s.name)} ${mine ? '<span class="tag">(du)</span> <button class="btn small ghost" id="btn-rename" title="Namen ändern">✎</button>' : ''}</div>
-      <span class="tag">${i === r.host ? '👑 Gastgeber' : s.isBot ? '🤖 KI-Siedler' : s.connected ? '🟢 bereit' : '⚪ getrennt'}</span>
+      <div class="name">${esc(s.name)} ${mine ? `<span class="tag">(du)</span> <button class="btn small ghost icon-btn" id="btn-rename" title="Namen ändern">${icon('pencil', 15)}</button>` : ''}</div>
+      <span class="tag status">${i === r.host ? `${icon('crown', 13)} Gastgeber` : s.isBot ? `${icon('bot', 13)} KI-Siedler` : s.connected ? '<i class="dot on"></i> bereit' : '<i class="dot"></i> getrennt'}</span>
       <div class="swatches">${swatches}</div>
-      ${isHost && i !== r.host ? `<button class="btn small ghost" data-remove="${i}" title="Entfernen">✕</button>` : ''}
+      ${isHost && i !== r.host ? `<button class="btn small ghost icon-btn" data-remove="${i}" title="Entfernen">${icon('close', 15)}</button>` : ''}
     </li>`;
-  }).join('') + Array.from({ length: 4 - r.seats.length }, () => '<li class="seat empty">Freier Platz – teile den Code</li>').join('');
+  }).join('') + Array.from({ length: 4 - r.seats.length }, () => `<li class="seat empty">${icon('users', 16)} Freier Platz – teile den Code</li>`).join('');
   $$('.swatch', list).forEach((b) => b.addEventListener('click', () => send({ t: 'setColor', color: b.dataset.color, seat: Number(b.dataset.seat) })));
   $$('[data-remove]', list).forEach((b) => b.addEventListener('click', () => send({ t: 'removeSeat', seat: Number(b.dataset.remove) })));
   $('#btn-rename', list)?.addEventListener('click', () => {
@@ -463,8 +527,9 @@ function bindMenu() {
     const last = S.games.find((g) => g.phase !== 'ended');
     if (last) send({ t: 'joinRoom', code: last.code });
   });
-  $('#btn-saved').addEventListener('click', () => { play('page'); showMenu('games'); });
-  $('#btn-games-back').addEventListener('click', () => showMenu('home'));
+  $$('#menu-nav [data-view]').forEach((b) => b.addEventListener('click', () => { play('page'); showMenu(b.dataset.view); }));
+  $$('#menu-nav [data-action]').forEach((b) => b.addEventListener('click', () => (b.dataset.action === 'rules' ? openRules(0) : openSettings())));
+  $$('[data-mode-art]').forEach((el) => { el.innerHTML = modeArt(el.dataset.modeArt); });
   $('#btn-copy-link').addEventListener('click', copyInvite);
   $('#btn-add-bot').addEventListener('click', () => send({ t: 'addBot' }));
   $('#room-vp').addEventListener('change', () => send({ t: 'setOptions', vpToWin: Number($('#room-vp').value) }));
@@ -600,13 +665,13 @@ function renderPlayers() {
     const off = !S.demo && seat && !seat.isBot && !seat.connected;
     const discarding = st.turn.pending === 'discard' && st.turn.discards && st.turn.discards[p.idx];
     const isMe = p.idx === S.you;
-    const extra = [p.knights ? `⚔️ ${p.knights}` : '', p.longestRoad >= 3 ? `🛤️ ${p.longestRoad}` : ''].filter(Boolean).join(' · ');
+    const extra = [p.knights ? `${icon('sword', 11)} ${p.knights}` : '', p.longestRoad >= 3 ? `${icon('road', 11)} ${p.longestRoad}` : ''].filter(Boolean).join(' · ');
     return `<li class="player ${active ? 'active' : ''} ${isMe ? 'me' : ''}" data-idx="${p.idx}" style="--pc:${COLOR_HEX[p.color]}">
       <div class="portrait-wrap">${portraitArt(p.idx, COLOR_HEX[p.color], 58)}</div>
       <div class="pinfo">
         <div class="pname">${esc(isMe && !S.room?.hotseat ? 'Du' : p.name)}${p.isBot ? '<small>KI</small>' : ''}</div>
         <div class="phouse">${esc(COLOR_LABEL[p.color] || '')}</div>
-        <div class="pvp"><span class="crown">👑</span> <b>${vp}</b> <span class="of">/ ${st.vpToWin}</span></div>
+        <div class="pvp"><span class="crown">${icon('crown', 12)}</span> <b>${vp}</b> <span class="of">/ ${st.vpToWin}</span></div>
       </div>
       <div class="pstats">
         <span title="Rohstoffkarten"><i class="mini-card"></i>${p.resourceCount} ${p.resourceCount === 1 ? 'Karte' : 'Karten'}</span>
@@ -644,7 +709,7 @@ function renderTurnCard() {
     m.caption = 'Das Spiel ist entschieden';
     m.title = 'Die Insel hat einen Meister';
     m.desc = `${esc(w.name)} erreicht ${w.vp} Siegpunkte.`;
-    m.actions.push({ label: '🏆 Ergebnis ansehen', primary: true, fn: () => { S.autoModal = null; renderAutoModal(true); } });
+    m.actions.push({ label: `${icon('trophy', 17)} Ergebnis ansehen`, primary: true, fn: () => { S.autoModal = null; renderAutoModal(true); } });
   } else if (st.phase === 'setup') {
     m.status = 'Gründungsphase';
     const second = st.setup.index >= st.players.length;
@@ -696,7 +761,7 @@ function renderTurnCard() {
       m.caption = 'Der Würfelwurf';
       m.title = 'Lass die Insel sprechen';
       m.desc = 'Würfle. Felder mit der gewürfelten Zahl versorgen alle angrenzenden Siedlungen.';
-      m.actions.push({ label: '🎲 Würfeln', primary: true, key: 'R', fn: () => act('roll') });
+      m.actions.push({ label: `${icon('dice', 17)} Würfeln`, primary: true, key: 'R', fn: () => act('roll') });
     } else {
       m.illus = 'house';
       m.caption = 'Bauen & Handeln';
@@ -705,7 +770,7 @@ function renderTurnCard() {
       m.desc = ghosts && settings.holograms
         ? `Handle für das, was dir fehlt. ${ghosts === 1 ? 'Ein möglicher Bau leuchtet' : `${ghosts} mögliche Bauten leuchten`} als Hologramm auf der Insel.`
         : 'Handle für das, was dir fehlt, verbinde deine Straßen und lass deine Siedlungen wachsen.';
-      m.actions.push({ label: '⇄ Handeln', key: 'T', fn: () => openTrade() });
+      m.actions.push({ label: `${icon('swap', 17)} Handeln`, key: 'T', fn: () => openTrade() });
       m.actions.push({ label: 'Zug beenden', primary: true, key: 'E', fn: () => { S.mode = null; act('endTurn'); } });
     }
   } else {
@@ -745,7 +810,7 @@ function renderChronicle() {
   const fresh = S.prev ? st.log.length - S.prev.log.length : 0;
   $('#chronicle').innerHTML = items.map((l, i) => {
     const p = l.player !== null && l.player !== undefined ? st.players[l.player] : null;
-    return `<li class="${i < fresh ? 'fresh' : ''}"><span class="li-ico">${LOG_ICON[l.icon] || '📜'}</span><div>${esc(l.text)}
+    return `<li class="${i < fresh ? 'fresh' : ''}"><span class="li-ico">${emblem(LOG_EMBLEM[l.icon] || 'scroll', 22)}</span><div>${esc(l.text)}
       <div class="li-meta">${p ? `<span class="li-avatar">${portraitArt(p.idx, COLOR_HEX[p.color], 18)}</span>` : ''}${l.turn ? `Zug ${l.turn}` : 'Gründung'}</div></div></li>`;
   }).join('');
 }
@@ -882,7 +947,7 @@ function renderOverlays() {
   const dice = st.turn.dice || [...st.events].reverse().find((e) => e.type === 'roll')?.dice;
   const chip = $('#dice-chip');
   chip.hidden = !dice || S.demo;
-  if (dice) chip.innerHTML = `🎲 ${dice[0] + dice[1]} <small>${dice[0]} + ${dice[1]}</small>`;
+  if (dice) chip.innerHTML = `${icon('dice', 18)} ${dice[0] + dice[1]} <small>${dice[0]} + ${dice[1]}</small>`;
 }
 
 // ---------- Ziele & Hologramm-Vorschau ----------
@@ -933,7 +998,7 @@ function updateTargets() {
   el.hidden = !count;
   if (count) {
     const what = kind === 'hex' ? 'mögliche Felder' : kind === 'vertex' ? 'mögliche Plätze' : `mögliche${count === 1 ? 'r Bau' : ' Bauten'}`;
-    el.textContent = `✨ ${count} ${what}${S.mode ? ' · Esc zum Abbrechen' : ''}`;
+    el.innerHTML = `${icon('sparkle', 13)} ${count} ${what}${S.mode ? ' · Esc zum Abbrechen' : ''}`;
   }
 }
 
@@ -960,10 +1025,10 @@ function siteRows(vid, isCity) {
   return v.hexes.map((h) => st.board.hexes[h]).map((h) => {
     const r = TERRAIN_RESOURCE[h.terrain];
     const blocked = h.id === st.robber;
-    return `<div class="tres"><span class="e">${r ? resourceArt(r, 24) : TERRAIN_EMOJI.desert}</span>
+    return `<div class="tres"><span class="e">${r ? resourceArt(r, 24) : emblem('desert', 24)}</span>
       <span class="n">${r ? RES_LABEL[r] : 'Wüste'}<small>${r ? `${isCity ? 2 : 1} Karte · Chance ${'●'.repeat(PIPS[h.number])}${blocked ? ' · Räuber!' : ''}` : 'kein Ertrag'}</small></span>
       ${h.number ? `<span class="tnum ${h.number === 6 || h.number === 8 ? 'red' : ''}">${h.number}</span>` : ''}</div>`;
-  }).join('') + (v.harbor ? `<div class="foot">⚓ Hafen: ${v.harbor === 'any' ? 'alles 3:1' : `${RES_LABEL[v.harbor]} 2:1`}</div>` : '');
+  }).join('') + (v.harbor ? `<div class="foot">${icon('anchor', 12)} Hafen: ${v.harbor === 'any' ? 'alles 3:1' : `${RES_LABEL[v.harbor]} 2:1`}</div>` : '');
 }
 
 function showTooltip(info) {
@@ -984,7 +1049,7 @@ function showTooltip(info) {
   } else if (info.kind === 'hex') {
     const h = st.board.hexes[info.id];
     const cands = stealCandidates(st, info.id, S.you);
-    html = `<h4>🥷 Räuber hierher</h4><div class="sub">${TERRAIN_LABEL[h.terrain]}${h.number ? ` · Zahl ${h.number}` : ''}</div>
+    html = `<h4>${emblem('robber', 24)} Räuber hierher</h4><div class="sub">${TERRAIN_LABEL[h.terrain]}${h.number ? ` · Zahl ${h.number}` : ''}</div>
       <div class="foot">${cands.length ? `Stehlen möglich bei: ${cands.map((c) => esc(st.players[c].name)).join(', ')}` : 'Hier kannst du niemanden bestehlen.'}</div>`;
   }
   tip.innerHTML = html;
@@ -1039,7 +1104,7 @@ async function runSequence(stops) {
 
 function rollSequence(ev, st) {
   const sum = ev.dice[0] + ev.dice[1];
-  const rolling = boardToast({ icon: '🎲', title: 'Lass die Würfel entscheiden', text: `${esc(nameOf(ev.player))} würfelt …`, sticky: true });
+  const rolling = boardToast({ icon: 'dice', title: 'Lass die Würfel entscheiden', text: `${esc(nameOf(ev.player))} würfelt …`, sticky: true });
   play('dice');
   const producing = ev.robber ? [] : st.board.hexes.filter((h) => h.number === sum && h.id !== st.robber).map((h) => h.id);
   const stops = [
@@ -1198,20 +1263,20 @@ function handleEvent(ev, st) {
       break;
     case 'trade':
       play('coin');
-      if (mine(ev.a) || mine(ev.b)) boardToast({ icon: '🤝', title: 'Handel abgeschlossen', text: `${esc(nameOf(ev.a))} und ${esc(nameOf(ev.b))} tauschen.` });
+      if (mine(ev.a) || mine(ev.b)) boardToast({ icon: 'trade', title: 'Handel abgeschlossen', text: `${esc(nameOf(ev.a))} und ${esc(nameOf(ev.b))} tauschen.` });
       break;
     case 'tradeDeclined':
-      if (mine(ev.from)) boardToast({ icon: '✋', title: 'Niemand möchte tauschen', text: 'Alle Mitspieler haben dein Angebot abgelehnt.' });
+      if (mine(ev.from)) boardToast({ icon: 'hand', title: 'Niemand möchte tauschen', text: 'Alle Mitspieler haben dein Angebot abgelehnt.' });
       break;
     case 'tradeAccepted':
-      if (mine(ev.from)) { play('coin'); boardToast({ icon: '🤝', title: `${esc(st.players[ev.by].name)} nimmt an`, text: 'Wähle im Handelsdialog, mit wem du tauschst.' }); }
+      if (mine(ev.from)) { play('coin'); boardToast({ icon: 'trade', title: `${esc(st.players[ev.by].name)} nimmt an`, text: 'Wähle im Handelsdialog, mit wem du tauschst.' }); }
       break;
     case 'bankTrade':
       play('coin');
       break;
     case 'award':
       play('award');
-      banner(ev.award === 'longestRoad' ? '🛤️ Längste Handelsstraße' : '⚔️ Größte Rittermacht', `${mine(ev.player) ? 'Du erhältst' : `${esc(st.players[ev.player].name)} erhält`} 2 Siegpunkte.`);
+      banner(ev.award === 'longestRoad' ? `${emblem('road', 24)} Längste Handelsstraße` : `${emblem('sword', 24)} Größte Rittermacht`, `${mine(ev.player) ? 'Du erhältst' : `${esc(st.players[ev.player].name)} erhält`} 2 Siegpunkte.`);
       break;
     case 'turn':
       if (mine(ev.player)) { play('turn'); banner(S.room?.hotseat ? `${esc(st.players[ev.player].name)} ist dran` : 'Du bist am Zug', 'Würfle, um die Insel sprechen zu lassen.'); }
@@ -1270,12 +1335,12 @@ function popOnPlayer(idx, text, loss = false) {
   li.insertAdjacentHTML('beforeend', popsFor(idx));
 }
 
-function boardToast({ num, red, icon, iconHtml, title, text, gainsHtml = '', sticky = false }) {
+function boardToast({ num, red, icon: iconName, iconHtml, title, text, gainsHtml = '', sticky = false }) {
   const el = document.createElement('div');
   el.className = 'toast';
-  el.innerHTML = `${num ? `<span class="num ${red ? 'red' : ''}">${num}</span>` : `<span class="num">${iconHtml || icon || '📜'}</span>`}
+  el.innerHTML = `${num ? `<span class="num ${red ? 'red' : ''}">${num}</span>` : `<span class="num art-num">${iconHtml || emblem(iconName || 'scroll', 26)}</span>`}
     <div><b>${esc(title)}</b>${text ? `<small>${text}</small>` : ''}${gainsHtml ? `<div class="gains">${gainsHtml}</div>` : ''}</div>
-    <button class="close" aria-label="Schließen">✕</button>`;
+    <button class="close" aria-label="Schließen">${icon('close', 11)}</button>`;
   const box = $('#toasts');
   box.appendChild(el);
   while (box.children.length > 3) box.firstChild.remove();
@@ -1355,7 +1420,7 @@ function checkCurtain() {
     ${portraitArt(seat, COLOR_HEX[p.color], 110)}
     <h2>Gib das Gerät an ${esc(p.name)} weiter</h2>
     <p>Die Karten bleiben verdeckt, bis ${esc(p.name)} bereit ist.</p>
-    <button class="btn primary big" id="curtain-go">Ich bin ${esc(p.name)} – weiter →</button></div>`;
+    <button class="btn primary big" id="curtain-go">Ich bin ${esc(p.name)} – weiter ${icon('arrowRight', 18)}</button></div>`;
   c.hidden = false;
   $('#curtain-go').addEventListener('click', () => { S.shownSeat = seat; hideCurtain(); play('page'); });
 }
@@ -1372,7 +1437,7 @@ function openModal(key, html, { wide = false, closable = true, onClose } = {}) {
   const still = S.modalKey && key && base(S.modalKey) === base(key);
   root.innerHTML = `<div class="modal-backdrop ${still ? 'still' : ''}"><div class="modal parchment ${wide ? 'wide' : ''} ${still ? 'still' : ''}" role="dialog" aria-modal="true">
     <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
-    ${closable ? '<button class="modal-close" aria-label="Schließen">✕</button>' : ''}<div class="modal-body">${html}</div></div></div>`;
+    ${closable ? `<button class="modal-close" aria-label="Schließen">${icon('close', 16)}</button>` : ''}<div class="modal-body">${html}</div></div></div>`;
   S.modalKey = key;
   S.modalOnClose = onClose;
   const close = () => { closeModal(); if (onClose) onClose(); };
@@ -1495,10 +1560,10 @@ function openIncoming() {
     <div class="modal-lede">${avatar(from, 56)}<div><span class="eyebrow">Ein Tausch unter Siedlern</span><b>${esc(from.name)} sucht einen Handelspartner</b><span class="hint">Nimmst du an, entscheidet ${esc(from.name)}, mit wem getauscht wird.</span></div></div>
     <div class="trade-summary">
       <div class="side"><small>Du erhältst</small><div class="items">${resList(t.give)}</div></div>
-      <div class="swap">⇄</div>
+      <div class="swap">${icon('swap', 20)}</div>
       <div class="side"><small>Du gibst</small><div class="items">${resList(t.get)}</div></div>
     </div>
-    ${others.length ? `<div class="resp-mini">${others.map(([i, r]) => `<span class="rm ${r}" title="${esc(st.players[i].name)}">${avatar(st.players[i], 22)}${r === 'accepted' ? '✓' : r === 'declined' ? '✗' : '…'}</span>`).join('')}</div>` : ''}
+    ${others.length ? `<div class="resp-mini">${others.map(([i, r]) => `<span class="rm ${r}" title="${esc(st.players[i].name)}">${avatar(st.players[i], 22)}${r === 'accepted' ? icon('check', 13) : r === 'declined' ? icon('close', 13) : '…'}</span>`).join('')}</div>` : ''}
     ${canAccept ? '' : '<p class="hint center">Dir fehlen die gewünschten Karten.</p>'}
     <div class="modal-actions">
       <button class="btn danger" id="tr-decline">Ablehnen</button>
@@ -1517,15 +1582,15 @@ function openOfferStatus() {
   const rows = Object.entries(t.responses).map(([i, r]) => {
     const o = st.players[i];
     return `<li class="resp ${r}">${avatar(o, 38)}<div><b>${esc(o.name)}</b><small>${LABEL[r]}</small></div>
-      ${r === 'accepted' ? `<button class="btn primary small" data-with="${i}">Mit ${esc(o.name)} tauschen</button>` : r === 'pending' ? '<span class="dots"><i></i><i></i><i></i></span>' : '<span class="no">✗</span>'}</li>`;
+      ${r === 'accepted' ? `<button class="btn primary small" data-with="${i}">Mit ${esc(o.name)} tauschen</button>` : r === 'pending' ? '<span class="dots"><i></i><i></i><i></i></span>' : `<span class="no">${icon('close', 16)}</span>`}</li>`;
   }).join('');
   const accepted = Object.values(t.responses).filter((r) => r === 'accepted').length;
   const m = openModal(S.autoModal, `
     <h2>Dein Angebot an alle</h2>
     <div class="trade-summary">
       <div class="side">${avatar(you, 44)}<b>${esc(nameOf(S.you))}</b><small>gibt</small><div class="items">${resList(t.give)}</div></div>
-      <div class="swap ${accepted ? '' : 'waiting'}">⇄</div>
-      <div class="side"><span class="bank-ico big">👥</span><b>Mitspieler</b><small>geben</small><div class="items">${resList(t.get)}</div></div>
+      <div class="swap ${accepted ? '' : 'waiting'}">${icon('swap', 20)}</div>
+      <div class="side"><span class="side-art">${emblem('users', 44)}</span><b>Mitspieler</b><small>geben</small><div class="items">${resList(t.get)}</div></div>
     </div>
     <p class="hint center">${accepted ? 'Wähle, mit wem du tauschen möchtest.' : 'Deine Karten bleiben auf der Hand, bis du einen Handelspartner wählst.'}</p>
     <ul class="resp-list">${rows}</ul>
@@ -1548,6 +1613,101 @@ function openAcceptedWait() {
 
 
 
+// ---------- Handelsbereich „Du gibst / Du erhältst“ ----------
+
+const RATIO_LABEL = { 2: 'Spezialhafen', 3: 'Hafen', 4: 'Bank' };
+
+function bankCredits(T, ratios) {
+  return RESOURCES.reduce((sum, r) => sum + Math.floor(T.give[r] / ratios[r]), 0);
+}
+
+function canTakeMore(T, r) {
+  const st = S.state;
+  if (T.give[r] > 0) return false;
+  if (T.partner !== 'bank') return true;
+  return resCount(T.get) < bankCredits(T, harborRatios(st, S.you)) && st.bank[r] - T.get[r] > 0;
+}
+
+function stepper(kind, r, n, canPlus) {
+  return `<div class="tx-step">
+    <button class="tx-btn" data-${kind}="${r}" data-d="-1" ${n ? '' : 'disabled'} aria-label="Eine weniger">${icon('minus', 14)}</button>
+    <span class="tx-n">${n}</span>
+    <button class="tx-btn" data-${kind}="${r}" data-d="1" ${canPlus ? '' : 'disabled'} aria-label="Eine mehr">${icon('plus', 14)}</button></div>`;
+}
+
+function itemList(res) {
+  const parts = RESOURCES.filter((r) => res[r]).map((r) => `<span class="tx-item">${resourceArt(r, 20)}<b>${res[r]}</b> ${RES_LABEL[r]}</span>`);
+  return parts.join('<span class="tx-plus">+</span>');
+}
+
+function tradeExchange({ bank, p, st, ratios, T }) {
+  const credits = bank ? bankCredits(T, ratios) : 0;
+  const picked = resCount(T.get);
+  const giveTiles = RESOURCES.map((r) => {
+    const have = p.resources[r];
+    const n = T.give[r];
+    const step = bank ? ratios[r] : 1;
+    const canPlus = have - n >= step;
+    const off = !n && !canPlus;
+    return `<div class="tx-tile give ${n ? 'on' : ''} ${off ? 'off' : ''}" data-tile-give="${r}" title="${RES_LABEL[r]}: ${have} auf der Hand${bank ? ` · Kurs ${step}:1 (${RATIO_LABEL[step]})` : ''}">
+      ${bank ? `<span class="tx-ratio r${step}">${step}:1</span>` : ''}
+      ${n ? `<span class="tx-badge minus">−${n}</span>` : ''}
+      <span class="tx-art">${resourceArt(r, 46)}</span>
+      <b class="tx-name">${RES_LABEL[r]}</b>
+      <span class="tx-have">Auf der Hand <b>${have}</b></span>
+      ${off ? `<span class="tx-why">${have ? `Brauchst ${step}` : 'Keine Karte'}</span>` : stepper('give', r, n, canPlus)}
+    </div>`;
+  }).join('');
+  const getTiles = RESOURCES.map((r) => {
+    const n = T.get[r];
+    const blocked = T.give[r] > 0;
+    const empty = bank && st.bank[r] <= 0;
+    const canPlus = canTakeMore(T, r);
+    const off = !n && (blocked || empty);
+    return `<div class="tx-tile get ${n ? 'on' : ''} ${off ? 'off' : ''} ${!off && !n && !canPlus ? 'wait' : ''}" data-tile-get="${r}">
+      ${n ? `<span class="tx-badge plus">+${n}</span>` : ''}
+      <span class="tx-art">${resourceArt(r, 46)}</span>
+      <b class="tx-name">${RES_LABEL[r]}</b>
+      <span class="tx-have">${bank ? `In der Bank <b>${st.bank[r]}</b>` : 'Von Mitspielern'}</span>
+      ${off ? `<span class="tx-why">${blocked ? 'Gibst du ab' : 'Bank ist leer'}</span>` : stepper('get', r, n, canPlus)}
+    </div>`;
+  }).join('');
+
+  // Leitfaden zwischen den Reihen: was passiert gerade, was ist der nächste Schritt?
+  const giving = resCount(T.give);
+  let flow;
+  if (!giving && !picked) flow = `<span class="tx-hint">${icon('give', 15)} Wähle oben, was du abgibst${bank ? ' – bei der Bank immer im ganzen Paket' : ''}.</span>`;
+  else if (bank && !credits) flow = `<span class="tx-hint">${icon('info', 15)} Für eine Karte aus der Bank brauchst du ein volles Paket.</span>`;
+  else flow = `<span class="tx-side">${giving ? itemList(T.give) : '<i>nichts</i>'}</span><span class="tx-arrow">${icon('arrowRight', 18)}</span><span class="tx-side">${picked ? itemList(T.get) : `<i>${bank ? `${credits} Karte${credits === 1 ? '' : 'n'} deiner Wahl` : 'deine Wünsche'}</i>`}</span>`;
+
+  const credit = bank
+    ? `<span class="tx-credit ${credits && picked === credits ? 'done' : ''}">${credits
+      ? `${picked === credits ? `${icon('check', 14)} Bereit zum Tausch` : `Noch <b>${credits - picked}</b> wählen`}<span class="pips">${Array.from({ length: credits }, (_, i) => `<i class="${i < picked ? 'on' : ''}"></i>`).join('')}</span>`
+      : 'Erst abgeben, dann wählen'}</span>`
+    : `<span class="tx-credit">${picked ? `${picked} Karte${picked === 1 ? '' : 'n'} gewünscht` : 'Was wünschst du dir?'}</span>`;
+
+  return `<div class="tx">
+    <section class="tx-row">
+      <header class="tx-head"><h3>${icon('give', 18)} Du gibst</h3>
+        <span class="tx-legend">${bank ? `Dein Kurs: <span class="tx-ratio r4">4:1</span> Bank · <span class="tx-ratio r3">3:1</span> Hafen · <span class="tx-ratio r2">2:1</span> Spezialhafen` : 'Karten aus deiner Hand'}</span></header>
+      <div class="tx-grid">${giveTiles}</div>
+    </section>
+    <div class="tx-flow">${flow}</div>
+    <section class="tx-row">
+      <header class="tx-head"><h3>${icon('receive', 18)} Du erhältst</h3>${credit}</header>
+      <div class="tx-grid">${getTiles}</div>
+    </section>
+  </div>`;
+}
+
+function bindExchange(root, stepGive, stepGet) {
+  $$('[data-give]', root).forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); stepGive(b.dataset.give, Number(b.dataset.d)); }));
+  $$('[data-get]', root).forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); stepGet(b.dataset.get, Number(b.dataset.d)); }));
+  // Ein Klick auf die Karte selbst legt ein Paket bzw. eine Karte dazu
+  $$('[data-tile-give]', root).forEach((t) => t.addEventListener('click', () => { if (!t.classList.contains('off')) stepGive(t.dataset.tileGive, 1); }));
+  $$('[data-tile-get]', root).forEach((t) => t.addEventListener('click', () => { if (!t.classList.contains('off')) stepGet(t.dataset.tileGet, 1); }));
+}
+
 // Handelstisch: Tausch mit Bank & Häfen oder ein Angebot an alle Mitspieler
 function openTrade({ give: preset = null } = {}) {
   if (!me()) return;
@@ -1566,6 +1726,10 @@ function openTrade({ give: preset = null } = {}) {
     const ratios = harborRatios(st, S.you);
     const bank = T.partner === 'bank';
     for (const r of RESOURCES) T.give[r] = Math.min(T.give[r], p.resources[r] - (p.resources[r] % (bank ? ratios[r] : 1)));
+    if (bank) {
+      const credits = bankCredits(T, ratios);
+      for (const r of [...RESOURCES].reverse()) while (resCount(T.get) > credits && T.get[r]) T.get[r]--;
+    }
     let valid = resCount(T.give) > 0 && resCount(T.get) > 0 && hasRes(p.resources, T.give) && !RESOURCES.some((r) => T.give[r] && T.get[r]);
     let note = '';
     if (bank) {
@@ -1575,30 +1739,24 @@ function openTrade({ give: preset = null } = {}) {
         if (T.give[r] % ratios[r]) ok = false;
         credits += Math.floor(T.give[r] / ratios[r]);
       }
-      if (!ok) { valid = false; note = 'Gib jeden Rohstoff in vollen Paketen (z. B. 4:1, 3:1, 2:1).'; }
-      else if (credits !== resCount(T.get)) { valid = false; note = `Du kannst ${credits} Karte${credits === 1 ? '' : 'n'} aus der Bank wählen.`; }
-      else note = 'Die Bank tauscht sofort.';
+      if (!ok) valid = false;
+      else if (credits !== resCount(T.get)) valid = false;
       if (!hasRes(st.bank, T.get)) { valid = false; note = 'Die Bank hat nicht genug davon.'; }
-    } else {
-      note = 'Alle Mitspieler sehen dein Angebot und können annehmen oder ablehnen. Nehmen mehrere an, wählst du, mit wem du tauschst.';
     }
     const m = openModal('trade', `
       <h2>Der Handelstisch</h2>
       <div class="modal-lede"><span class="lede-art">${ILLUS.trade}</span><div><span class="eyebrow">Ein guter Tausch, eine wachsende Insel</span><b>Schaffe Raum für Möglichkeiten.</b><span class="hint">Tausche mit der Bank oder lege ein Angebot für alle auf den Tisch.</span></div></div>
       <div class="partner-tabs two">
-        <button class="partner ${bank ? 'active' : ''}" data-partner="bank"><span class="bank-ico">⚓</span><div><b>Bank & Häfen</b><small>Sofort tauschen · ${Math.min(...Object.values(ratios))}:1 bestes Verhältnis</small></div></button>
+        <button class="partner ${bank ? 'active' : ''}" data-partner="bank"><span class="partner-art">${emblem('bank', 34)}</span><div><b>Bank & Häfen</b><small>Sofort tauschen · ${Math.min(...Object.values(ratios))}:1 bestes Verhältnis</small></div></button>
         <button class="partner ${bank ? '' : 'active'}" data-partner="all"><span class="avatars">${others.map((o) => avatar(o, 26)).join('')}</span><div><b>An alle Mitspieler</b><small>${others.length} Siedler · sie entscheiden selbst</small></div></button>
       </div>
       <div class="trade-summary">
         <div class="side">${avatar(p, 44)}<b>${esc(nameOf(S.you))}</b><small>gibt</small><div class="items">${resList(T.give)}</div></div>
-        <div class="swap">⇄</div>
-        <div class="side">${bank ? '<span class="bank-ico big">⚓</span><b>Bank</b>' : '<span class="bank-ico big">👥</span><b>Mitspieler</b>'}<small>${bank ? 'gibt' : 'geben'}</small><div class="items">${resList(T.get)}</div></div>
+        <div class="swap">${icon('swap', 20)}</div>
+        <div class="side">${bank ? `<span class="side-art">${emblem('bank', 44)}</span><b>Bank</b>` : `<span class="side-art">${emblem('users', 44)}</span><b>Mitspieler</b>`}<small>${bank ? 'gibt' : 'geben'}</small><div class="items">${resList(T.get)}</div></div>
       </div>
-      <div class="trade-cols">
-        <div><h3>📤 Du gibst</h3>${pickGrid('give-grid', { counts: T.give, have: p.resources, disabled: (r) => !p.resources[r], note: (r) => (bank ? ` · ${ratios[r]}:1` : '') })}</div>
-        <div><h3>📥 Du erhältst</h3>${pickGrid('get-grid', { counts: T.get, showHave: false, disabled: (r) => T.give[r] > 0 || (bank && st.bank[r] <= 0), note: (r) => (bank ? `${st.bank[r]} in der Bank` : 'anfragen') })}</div>
-      </div>
-      <p class="trade-note">${note}</p>
+      ${tradeExchange({ bank, p, st, ratios, T })}
+      ${note ? `<p class="trade-note">${note}</p>` : ''}
       <div class="modal-actions">
         <button class="btn ghost" id="tr-reset">Zurücksetzen</button>
         <button class="btn primary" id="tr-submit" ${valid ? '' : 'disabled'}>${bank ? 'Mit der Bank tauschen' : 'Angebot an alle senden'}</button>
@@ -1609,20 +1767,27 @@ function openTrade({ give: preset = null } = {}) {
       play('click');
       draw();
     }));
-    bindPickGrid(m, 'give-grid', (r, d) => {
+    const stepGive = (r, d) => {
       const step = T.partner === 'bank' ? harborRatios(S.state, S.you)[r] : 1;
       const next = T.give[r] + d * step;
       if (next < 0 || next > me().resources[r]) return;
       T.give[r] = next;
       if (next) T.get[r] = 0;
+      // Bei der Bank nie mehr Karten gewählt lassen, als die abgegebenen Pakete erlauben
+      if (T.partner === 'bank') {
+        const credits = bankCredits(T, harborRatios(S.state, S.you));
+        for (const x of [...RESOURCES].reverse()) while (resCount(T.get) > credits && T.get[x]) T.get[x]--;
+      }
       play('card');
       draw();
-    });
-    bindPickGrid(m, 'get-grid', (r, d) => {
+    };
+    const stepGet = (r, d) => {
+      if (d > 0 && !canTakeMore(T, r)) return;
       T.get[r] = Math.max(0, T.get[r] + d);
       play('card');
       draw();
-    });
+    };
+    bindExchange(m, stepGive, stepGet);
     $('#tr-reset', m).addEventListener('click', () => { for (const r of RESOURCES) { T.give[r] = 0; T.get[r] = 0; } draw(); });
     $('#tr-submit', m).addEventListener('click', () => {
       const give = Object.fromEntries(RESOURCES.filter((r) => T.give[r]).map((r) => [r, T.give[r]]));
@@ -1711,7 +1876,7 @@ function probabilityRow() {
   const ways = { 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 7: 6, 8: 5, 9: 4, 10: 3, 11: 2, 12: 1 };
   return `<div class="prob-row">${Object.entries(ways).map(([n, w]) => `
     <div class="prob"><div class="bar ${n === '6' || n === '8' ? 'red' : n === '7' ? 'robber' : ''}" style="height:${w * 9}px"></div>
-    <span class="ptok ${n === '6' || n === '8' ? 'red' : ''}">${n === '7' ? '🥷' : n}</span><small>${Math.round((w / 36) * 100)}%</small></div>`).join('')}</div>`;
+    <span class="ptok ${n === '6' || n === '8' ? 'red' : ''}">${n === '7' ? emblem('robber', 20) : n}</span><small>${Math.round((w / 36) * 100)}%</small></div>`).join('')}</div>`;
 }
 
 const RULES = [
@@ -1753,7 +1918,7 @@ const RULES = [
     tab: 'Karten & Siegpunkte', html: () => `<h3><span class="num-badge">5</span> Karten & Siegpunkte</h3>
     <div class="dev-legend">${Object.keys(DEV_LABEL).map((k) => `<div>${devArt(k, 40)}<div><b>${DEV_LABEL[k]}</b><small>${DEV_TEXT[k]}</small></div></div>`).join('')}</div>
     <p>Pro Zug darfst du eine Karte ausspielen – nicht in dem Zug, in dem du sie gekauft hast. Einen Ritter darfst du auch vor dem Würfeln spielen.</p>
-    <ul><li>Siedlung 1 · Stadt 2 · Siegpunktkarte 1</li><li>🛤️ Längste Handelsstraße (mind. 5 zusammenhängende Straßen): 2</li><li>⚔️ Größte Rittermacht (mind. 3 Ritter): 2</li></ul>
+    <ul><li>Siedlung 1 · Stadt 2 · Siegpunktkarte 1</li><li>${emblem('road', 20)} Längste Handelsstraße (mind. 5 zusammenhängende Straßen): 2</li><li>${emblem('sword', 20)} Größte Rittermacht (mind. 3 Ritter): 2</li></ul>
     <p>Wer in seinem Zug die Zielpunktzahl erreicht, gewinnt sofort.</p>`,
   },
 ];
@@ -1765,7 +1930,7 @@ function openRules(tab = 0) {
     <div class="rules-hero"><div class="art">${ILLUS.island}</div><div><div class="eyebrow">Ein Leitfaden für die Insel</div>
       <h2>Von der ersten Hütte zum Inselerbe.</h2>
       <p>Sammle Rohstoffe, handle mit deinen Nachbarn und baue dich zu <b>${S.state?.vpToWin || 10} Siegpunkten</b> – in deinem eigenen Zug.</p>
-      <div class="vp-badge">👑 <b>${S.state?.vpToWin || 10}</b> <small>Siegpunkte<br />gewinnen die Insel</small></div></div></div>
+      <div class="vp-badge">${emblem('crown', 30)} <b>${S.state?.vpToWin || 10}</b> <small>Siegpunkte<br />gewinnen die Insel</small></div></div></div>
     <div class="rules-tabs">${RULES.map((r, i) => `<button class="rules-tab ${i === tab ? 'active' : ''}" data-tab="${i}"><span>${i + 1}</span> ${r.tab}</button>`).join('')}</div>
     <div class="rules-body">${RULES[tab].html()}</div>`, { wide: true });
   $$('[data-tab]', m).forEach((b) => b.addEventListener('click', () => openRules(Number(b.dataset.tab))));
@@ -1785,22 +1950,22 @@ function openSettings() {
     <h2 class="modal-title">An deinem Tisch</h2>
     <div class="settings-hero"><span class="lede-art">${ILLUS.island}</span><div><b>Eine Welt nach deinem Geschmack.</b><span class="hint">Stelle Detail, Klang, Tempo und Bewegung der Insel ein.</span></div></div>
     <div class="settings-grid">
-      <section><h3>🏞️ Die Ansicht</h3><p class="hint">Wie fein die Insel gezeichnet wird.</p>
+      <section><h3>${emblem('island', 28)} Die Ansicht</h3><p class="hint">Wie fein die Insel gezeichnet wird.</p>
         <label class="mini">Grafikqualität
           <select id="set-quality"><option value="ultra">Ultra – feinste Texturen, weiche Schatten & Tiefe</option><option value="high">Hoch – Schatten & volle Details</option><option value="medium">Mittel</option><option value="low">Niedrig – für schwächere Geräte</option></select></label>
         ${toggleHtml('set-holo', settings.holograms, 'Bauvorschau als Hologramme')}
       </section>
-      <section><h3>🎻 Der Klang</h3><p class="hint">Würfel, Pergament, Holz, Stein und warme Glocken.</p>
+      <section><h3>${emblem('bell', 28)} Der Klang</h3><p class="hint">Würfel, Pergament, Holz, Stein und warme Glocken.</p>
         ${toggleHtml('set-sound', settings.sound, 'Klang an')}
         ${toggleHtml('set-amb', settings.ambience, 'Meeresrauschen')}
         <label class="mini">Lautstärke <span id="vol-val">${Math.round(settings.volume * 100)}%</span><input type="range" id="set-volume" min="0" max="100" value="${Math.round(settings.volume * 100)}" /></label>
-        <div class="sound-grid">${Object.entries(SOUNDS).filter(([k]) => k !== 'error').map(([k, s]) => `<button class="sound-btn" data-sound="${k}">${s.icon} ${s.label}</button>`).join('')}</div>
+        <div class="sound-grid">${Object.entries(SOUNDS).filter(([k]) => k !== 'error').map(([k, s]) => `<button class="sound-btn" data-sound="${k}">${emblem(s.icon, 20)} ${s.label}</button>`).join('')}</div>
       </section>
-      <section><h3>⏳ Das Tempo</h3><p class="hint">Lass deine Mitspieler sich Zeit nehmen – oder halte das Spiel in Bewegung.</p>
+      <section><h3>${emblem('hourglass', 28)} Das Tempo</h3><p class="hint">Lass deine Mitspieler sich Zeit nehmen – oder halte das Spiel in Bewegung.</p>
         <div class="seg" id="set-pace">${Object.entries(PACE_LABEL).map(([k, l]) => `<button data-pace="${k}" class="${pace === k ? 'on' : ''}" ${isHost ? '' : 'disabled'}>${l}</button>`).join('')}</div>
         ${isHost ? '' : '<p class="hint">Nur der Gastgeber kann das Tempo ändern.</p>'}
       </section>
-      <section><h3>🌊 Die Bewegung</h3><p class="hint">Lieber einen ruhigen Tisch? Halte Wasser und Kamera still.</p>
+      <section><h3>${emblem('ship', 28)} Die Bewegung</h3><p class="hint">Lieber einen ruhigen Tisch? Halte Wasser und Kamera still.</p>
         ${toggleHtml('set-cine', settings.cinematic, 'Kamerafahrten (alle)')}
         <div class="sub-toggles">
           ${toggleHtml('set-camDice', settings.camDice, 'Zur Würfelschale')}
@@ -1852,10 +2017,10 @@ function tourSteps() {
   const wrap = $('#board-wrap');
   const lift = wrap.clientHeight > wrap.clientWidth ? 1.5 : 0.8;
   return [
-    { art: `${resourceArt('wood', 44)}<span class="arrow">→</span>${ILLUS.trade}<span class="arrow">→</span>${iconArt('settlement', 44)}`, title: 'Deine Insel, deine Geschichte', text: 'Sammle Rohstoffe, handle mit deinen Nachbarn und baue. Wer zuerst die Zielpunktzahl erreicht, gewinnt.', view: () => S.board.baseViewSpec() },
+    { art: `${resourceArt('wood', 44)}<span class="arrow">${icon('arrowRight', 18)}</span>${ILLUS.trade}<span class="arrow">${icon('arrowRight', 18)}</span>${iconArt('settlement', 44)}`, title: 'Deine Insel, deine Geschichte', text: 'Sammle Rohstoffe, handle mit deinen Nachbarn und baue. Wer zuerst die Zielpunktzahl erreicht, gewinnt.', view: () => S.board.baseViewSpec() },
     { art: resourceArt(TERRAIN_RESOURCE[fields.terrain], 64), title: 'Das Land gibt', text: `Jedes Feld liefert einen Rohstoff, sobald seine Zahl fällt. Die ${fields.number} gehört zu den häufigsten Würfen.`, view: () => S.board.hexesView([fields.id], lift), ring: [fields.x, fields.y, 0.95] },
     { art: iconArt('settlement', 60), title: 'Ein Zuhause. Benachbarte Felder.', text: 'Siedlungen stehen auf Kreuzungen und ernten von bis zu drei Feldern. Fahre über einen leuchtenden Platz, um zu sehen, was er bringt.', view: () => S.board.pointView(hv.x, hv.y, 3.4, lift * 0.7), ghost: home, ring: [hv.x, hv.y, 0.45] },
-    { art: '<span class="big-emo">🧭</span>', title: 'Ein besserer Handel', text: `Baue neben diesem Steg, um ${harbor.type === 'any' ? 'alle Rohstoffe 3:1' : `${RES_LABEL[harbor.type]} 2:1`} zu tauschen.`, view: () => S.board.pointView(harbor.x + harbor.nx * 0.4, harbor.y + harbor.ny * 0.4, 3.4, lift * 0.7), ring: [harbor.x + harbor.nx * 0.55, harbor.y + harbor.ny * 0.55, 0.45] },
+    { art: emblem('anchor', 64), title: 'Ein besserer Handel', text: `Baue neben diesem Steg, um ${harbor.type === 'any' ? 'alle Rohstoffe 3:1' : `${RES_LABEL[harbor.type]} 2:1`} zu tauschen.`, view: () => S.board.pointView(harbor.x + harbor.nx * 0.4, harbor.y + harbor.ny * 0.4, 3.4, lift * 0.7), ring: [harbor.x + harbor.nx * 0.55, harbor.y + harbor.ny * 0.55, 0.45] },
     { art: ILLUS.robber, title: 'Der ungebetene Gast', text: 'Fällt eine 7, erwacht der Räuber. Er blockiert ein Feld und stiehlt eine Karte. Halte deine Hand klein!', view: () => S.board.pointView(robberHex.x, robberHex.y, 3.6, lift * 0.8), ring: [robberHex.x, robberHex.y, 0.95] },
   ];
 }
@@ -1936,11 +2101,11 @@ function openGameMenu() {
     <h2 class="modal-title">Menü</h2>
     ${inRoom && !S.room.hotseat ? `<p>Raumcode: <b class="code">${S.room.code}</b> – teile den Link, damit andere zuschauen oder beitreten können.</p>` : ''}
     <div class="menu-list">
-      ${inRoom && !S.room.hotseat ? '<button class="btn" id="m-copy">🔗 Einladungslink kopieren</button>' : ''}
-      <button class="btn" id="m-tour">🧭 Inseltour starten</button>
-      <button class="btn" id="m-rules">📖 Regelbuch</button>
-      <button class="btn" id="m-settings">⚙ An deinem Tisch (Einstellungen)</button>
-      <button class="btn ${solo ? '' : 'danger'}" id="m-leave">${solo ? '💾 Speichern & zum Hauptmenü' : '🚪 Partie verlassen (KI übernimmt)'}</button>
+      ${inRoom && !S.room.hotseat ? `<button class="btn" id="m-copy">${icon('link', 17)} Einladungslink kopieren</button>` : ''}
+      <button class="btn" id="m-tour">${icon('compass', 17)} Inseltour starten</button>
+      <button class="btn" id="m-rules">${icon('book', 17)} Regelbuch</button>
+      <button class="btn" id="m-settings">${icon('cog', 17)} An deinem Tisch (Einstellungen)</button>
+      <button class="btn ${solo ? '' : 'danger'}" id="m-leave">${solo ? `${icon('chest', 17)} Speichern & zum Hauptmenü` : `${icon('leave', 17)} Partie verlassen (KI übernimmt)`}</button>
     </div>
     <h3>Tastenkürzel</h3>
     <p class="hint">R Würfeln · E Zug beenden · T Handeln · Esc Abbrechen · WASD Kamera schwenken · Leertaste + Ziehen schwenken</p>`);
@@ -1961,6 +2126,14 @@ function fillArt(root = document) {
   $$('[data-art]', root).forEach((el) => {
     const [name, size] = el.dataset.art.split(':');
     el.innerHTML = uiArt(name, Number(size) || 24);
+  });
+  $$('[data-icon]', root).forEach((el) => {
+    const [name, size] = el.dataset.icon.split(':');
+    el.outerHTML = icon(name, Number(size) || 16);
+  });
+  $$('[data-emblem]', root).forEach((el) => {
+    const [name, size] = el.dataset.emblem.split(':');
+    el.innerHTML = emblem(name, Number(size) || 24);
   });
 }
 
@@ -1985,7 +2158,6 @@ function bindGame() {
   $('#btn-sound').addEventListener('click', () => { toggleSound(); updateSoundBtn(); });
   $('#room-chip').addEventListener('click', copyInvite);
   $('#foot-trade').addEventListener('click', () => openTrade());
-  fillArt();
   updateSoundBtn();
   $$('.log-tab').forEach((b) => b.addEventListener('click', () => {
     $$('.log-tab').forEach((x) => x.classList.toggle('active', x === b));
@@ -2023,6 +2195,7 @@ function bindGame() {
 
 // ---------- Start ----------
 
+fillArt();
 bindMenu();
 bindGame();
 showDemo();

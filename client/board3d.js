@@ -916,7 +916,33 @@ export class Board3D {
     if (byUser) this.cinematicId = (this.cinematicId || 0) + 1;
   }
 
+  // Im Hauptmenü steht die Insel so weit weg, dass sie ganz in den freien Raum neben den Menüflächen passt
+  setMenuMode(on, freeWidth = 0) {
+    const before = this.menuMode ? this.menuDist() : 0;
+    this.menuMode = on;
+    this.menuFree = freeWidth || this.menuFree || 0;
+    const after = on ? this.menuDist() : 0;
+    // Die Kamerasteuerung darf so weit zurück, sonst würde sie die Menü-Ansicht wieder heranziehen;
+    // nach dem Verlassen gilt die normale Grenze erst, wenn die Kamera wieder angekommen ist
+    if (on) this.controls.maxDistance = Math.max(this.controls.maxDistance, after + 1);
+    const changed = (before > 0) !== on || (on && Math.abs(after - before) > 0.6);
+    if (changed && !this.userMoved) this.flyTo(this.baseViewSpec(), on ? 1600 : 1100).then(() => { if (!this.menuMode) this.resize(); });
+    else if (!on) this.resize();
+  }
+
+  menuDist() {
+    const w = this.container.clientWidth || 1;
+    const free = Math.max(260, Math.min(w, this.menuFree || w * 0.5));
+    const halfH = Math.atan(Math.tan((this.camera.fov * Math.PI) / 360) * this.camera.aspect);
+    const d = (6 * w) / (2 * 0.58 * free * Math.tan(halfH));
+    return Math.min(this.homeDist * 2.8, Math.max(this.homeDist, d));
+  }
+
   baseViewSpec() {
+    if (this.menuMode) {
+      const dir = this.homePos.clone().sub(this.homeTarget).normalize();
+      return { pos: dir.multiplyScalar(this.menuDist()), target: new THREE.Vector3(0, 0, 0) };
+    }
     if (this.baseView === 'top') {
       const dist = this.topDist || this.homeDist;
       return { pos: new THREE.Vector3(0, dist, 0.6), target: new THREE.Vector3(0, 0, 0.1) };
@@ -1017,6 +1043,18 @@ export class Board3D {
     this.controls.mouseButtons.LEFT = on ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
   }
 
+  // Bildausschnitt seitlich verschieben (z. B. damit die Insel im Hauptmenü im freien Raum steht)
+  setViewShift(px = 0) {
+    this.viewShift = px;
+    this.applyViewShift();
+  }
+
+  applyViewShift() {
+    const { clientWidth: w, clientHeight: h } = this.container;
+    if (this.viewShift && w && h) this.camera.setViewOffset(w, h, -this.viewShift, 0, w, h);
+    else this.camera.clearViewOffset();
+  }
+
   // Langsame Umrundung, z. B. als Hintergrund des Startmenüs
   setOrbit(on) {
     this.orbiting = on;
@@ -1050,6 +1088,7 @@ export class Board3D {
     this.camera.aspect = aspect;
     this.camera.fov = aspect < 1 ? 50 : 38;
     this.camera.updateProjectionMatrix();
+    this.applyViewShift();
     const halfH = Math.atan(Math.tan((this.camera.fov * Math.PI) / 360) * aspect);
     const dist = Math.max(11.8, 5.6 / Math.tan(halfH));
     this.homeDist = dist;
@@ -1059,7 +1098,7 @@ export class Board3D {
     // Etwas steiler als früher: Chips und Figuren bleiben aus der Grundansicht gut lesbar
     const dir = new THREE.Vector3(0, 8.9, 5.7).normalize();
     this.homePos = dir.multiplyScalar(dist).add(this.homeTarget);
-    this.controls.maxDistance = Math.max(17, dist + 3, this.topDist + 1);
+    this.controls.maxDistance = Math.max(17, dist + 3, this.topDist + 1, this.menuMode ? this.menuDist() + 1 : 0);
     if (!this.userMoved && !this.camAnim && !this.orbiting) {
       const v = this.baseViewSpec();
       this.camera.position.copy(v.pos);
@@ -1145,6 +1184,10 @@ export class Board3D {
     for (const l of this.harborLabels || []) l.quaternion.copy(this.camera.quaternion);
 
     this.controls.update();
+    // Nebel wandert mit der Kamera mit, damit die Insel auch aus der Ferne klar bleibt
+    const camDist = this.camera.position.distanceTo(this.controls.target);
+    this.scene.fog.near = Math.max(18, camDist * 1.1);
+    this.scene.fog.far = Math.max(42, camDist * 2.6);
     if (this.onCamera) this.onCamera();
     this.renderer.render(this.scene, this.camera);
   }
