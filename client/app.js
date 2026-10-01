@@ -15,7 +15,11 @@ import {
 const LOG_EMBLEM = {
   island: 'island', compass: 'compass', dice: 'dice', harvest: 'harvest', robber: 'robber', discard: 'discard', steal: 'steal',
   house: 'house', city: 'city', road: 'road', card: 'card', sword: 'sword', trade: 'trade', bank: 'bank', crown: 'crown', scroll: 'scroll',
+  leave: 'users', return: 'users', hourglass: 'hourglass',
 };
+// Zugzeit-Stufen (Sekunden) wie auf dem Server; 0 = ohne Zeitlimit
+const TURN_TIMES = [[0, 'Ohne Zeitlimit'], [60, '1 Minute'], [90, '1½ Minuten'], [120, '2 Minuten'], [180, '3 Minuten'], [300, '5 Minuten']];
+const TURN_TIME_SHORT = { 0: 'Aus', 60: '1 Min', 90: '1½ Min', 120: '2 Min', 180: '3 Min', 300: '5 Min' };
 const COLOR_HEX = Object.fromEntries(PLAYER_COLORS.map((c) => [c.id, c.hex]));
 const COLOR_LABEL = Object.fromEntries(PLAYER_COLORS.map((c) => [c.id, c.label]));
 const PACE_LABEL = { relaxed: 'Gemütlich', normal: 'Normal', fast: 'Zügig' };
@@ -173,6 +177,8 @@ function onMessage(msg) {
       break;
     }
     case 'state':
+      // Restzeit statt Uhrzeit vom Server: so stört eine abweichende Uhr im Browser nicht
+      S.clock = msg.clock ? { ...msg.clock, endsAt: Date.now() + msg.clock.remaining } : null;
       onState(msg.state);
       break;
     case 'error':
@@ -460,11 +466,12 @@ function renderRoom() {
   $('#room-options').style.display = isHost ? '' : 'none';
   $('#room-vp').value = String(r.vpToWin);
   $('#room-pace').value = r.pace || 'normal';
+  $('#room-time').value = String(r.turnTime || 0);
   $('#btn-add-bot').disabled = r.seats.length >= 4;
   $('#btn-start').hidden = !isHost;
   $('#room-hint').textContent = isHost
-    ? (r.seats.length < 2 ? 'Lade Freunde ein oder füge KI-Siedler hinzu (mind. 2 Spieler).' : `${r.seats.length} Spieler bereit. Ziel: ${r.vpToWin} Siegpunkte.`)
-    : 'Warte, bis der Gastgeber die Partie beginnt …';
+    ? (r.seats.length < 2 ? 'Lade Freunde ein oder füge KI-Siedler hinzu (mind. 2 Spieler).' : `${r.seats.length} Spieler bereit. Ziel: ${r.vpToWin} Siegpunkte · Zugzeit: ${TURN_TIME_SHORT[r.turnTime || 0]}.`)
+    : `Warte, bis der Gastgeber die Partie beginnt … (Zugzeit: ${TURN_TIME_SHORT[r.turnTime || 0]})`;
 }
 
 function inviteLink() {
@@ -501,7 +508,7 @@ function bindMenu() {
       const bots = Number($('#hs-bots').value);
       if (names.length + bots < 2) { toast('Mindestens zwei Siedler.'); return; }
       store.set('name', names[0]);
-      send({ t: 'createRoom', hotseat: true, players: names, bots, vpToWin: Number($('#hs-vp').value) });
+      send({ t: 'createRoom', hotseat: true, players: names, bots, vpToWin: Number($('#hs-vp').value), turnTime: Number($('#hs-time').value) });
       return;
     }
     const name = myName();
@@ -534,6 +541,11 @@ function bindMenu() {
   $('#btn-add-bot').addEventListener('click', () => send({ t: 'addBot' }));
   $('#room-vp').addEventListener('change', () => send({ t: 'setOptions', vpToWin: Number($('#room-vp').value) }));
   $('#room-pace').addEventListener('change', () => send({ t: 'setOptions', pace: $('#room-pace').value }));
+  $$('.turn-time-select').forEach((sel) => {
+    sel.innerHTML = TURN_TIMES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+  });
+  $('#hs-time').value = '0';
+  $('#room-time').addEventListener('change', () => send({ t: 'setOptions', turnTime: Number($('#room-time').value) }));
   $('#btn-start').addEventListener('click', () => send({ t: 'start' }));
   $('#btn-leave-room').addEventListener('click', () => send({ t: 'leave' }));
 }
@@ -646,6 +658,7 @@ function render() {
   renderDev();
   renderBuild();
   renderOverlays();
+  updateClocks();
   if (S.demo) return;
   updateTargets();
   renderAutoModal();
@@ -655,6 +668,95 @@ function render() {
   }
 }
 
+// ---------- Zugzeit ----------
+// Der Server führt die Uhr; hier wird nur angezeigt. Elemente mit data-clock="text"/"bar" zeigen die Restzeit.
+
+function clockFor(idx) {
+  const c = S.clock;
+  const st = S.state;
+  if (!c || S.demo || !st || st.phase === 'ended') return false;
+  return c.actors.includes(idx) && !st.players[idx]?.isBot;
+}
+
+function clockRemaining() {
+  const c = S.clock;
+  if (!c) return 0;
+  return Math.max(0, c.paused ? c.remaining : c.endsAt - Date.now());
+}
+
+function fmtClock(ms) {
+  const sec = Math.ceil(ms / 1000);
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+}
+
+function myClockRunning() {
+  const c = S.clock;
+  if (!c || c.paused || S.demo) return false;
+  const mine = S.local || [S.you];
+  return c.actors.some((i) => mine.includes(i));
+}
+
+function updateClocks() {
+  const c = S.clock;
+  const st = S.state;
+  const left = clockRemaining();
+  const frac = c ? Math.min(1, left / c.total) : 0;
+  const low = !!c && left <= 15_000;
+  // Zug-Panel: wer ist dran und wie lange noch?
+  const box = $('#turn-clock');
+  if (box) {
+    const humans = c && st && !S.demo && st.phase !== 'ended' ? c.actors.filter((i) => !st.players[i]?.isBot) : [];
+    box.hidden = !humans.length;
+    if (humans.length) {
+      const mine = myClockRunning();
+      const label = c.mode === 'discard'
+        ? (mine ? 'Zeit zum Abwerfen' : 'Abwerfen läuft')
+        : mine ? 'Deine Zugzeit' : `Zugzeit ${humans.length === 1 ? nameOf(humans[0]) : 'der Mitspieler'}`;
+      const key = `${label}|${c.paused}`;
+      if (box.dataset.key !== key) {
+        box.dataset.key = key;
+        box.innerHTML = `${icon('hourglass', 15)}<span class="lbl">${esc(label)}${c.paused ? ' · pausiert' : ''}</span><b data-clock="text"></b><span class="bar"><i data-clock="bar"></i></span>`;
+      }
+      box.classList.toggle('mine', mine);
+    }
+  }
+  for (const el of $$('[data-clock]')) {
+    if (el.dataset.clock === 'text') el.textContent = fmtClock(left);
+    else el.style.transform = `scaleX(${frac})`;
+    el.closest('.ptimer, .turn-clock, .modal-clock')?.classList.toggle('low', low);
+  }
+  // Die letzten Sekunden des eigenen Zugs ticken hörbar
+  const sec = Math.ceil(left / 1000);
+  if (myClockRunning() && sec <= 5 && sec > 0 && S.lastTick !== sec) {
+    S.lastTick = sec;
+    play('tick');
+  }
+}
+setInterval(updateClocks, 250);
+
+function clockHtml(label) {
+  if (!S.clock) return '';
+  return `<div class="modal-clock">${icon('hourglass', 14)}<span>${label}</span><b data-clock="text">${fmtClock(clockRemaining())}</b><span class="bar"><i data-clock="bar"></i></span></div>`;
+}
+
+// ---------- Nachrichten oben am Bildschirmrand ----------
+
+function notice({ player = null, title, text = '', art = 'users' }) {
+  const box = $('#notices');
+  const p = player !== null ? S.state?.players[player] : null;
+  const el = document.createElement('div');
+  el.className = 'notice';
+  el.innerHTML = `<span class="n-art">${p ? avatar(p, 36) : emblem(art, 32)}</span>
+    <div class="n-text"><b>${esc(title)}</b>${text ? `<small>${esc(text)}</small>` : ''}</div>
+    <button class="close" aria-label="Schließen">${icon('close', 11)}</button>`;
+  box.appendChild(el);
+  while (box.children.length > 3) box.firstChild.remove();
+  const kill = () => { if (!el.isConnected) return; el.classList.add('out'); setTimeout(() => el.remove(), 350); };
+  el.querySelector('.close').addEventListener('click', kill);
+  setTimeout(kill, 7000);
+  play('page');
+}
+
 function renderPlayers() {
   const st = S.state;
   const seats = S.room?.seats || [];
@@ -662,7 +764,9 @@ function renderPlayers() {
     const active = st.phase !== 'ended' && p.idx === st.current;
     const vp = p.vp ?? p.publicVP;
     const seat = seats[p.idx];
-    const off = !S.demo && seat && !seat.isBot && !seat.connected;
+    const away = !S.demo && seat && seat.away;
+    const off = !S.demo && seat && !seat.isBot && !seat.connected && !away;
+    const timed = clockFor(p.idx);
     const discarding = st.turn.pending === 'discard' && st.turn.discards && st.turn.discards[p.idx];
     const isMe = p.idx === S.you;
     const extra = [p.knights ? `${icon('sword', 11)} ${p.knights}` : '', p.longestRoad >= 3 ? `${icon('road', 11)} ${p.longestRoad}` : ''].filter(Boolean).join(' · ');
@@ -678,7 +782,8 @@ function renderPlayers() {
         ${extra ? `<span class="pextra" title="Ritter · längste eigene Straße">${extra}</span>` : ''}
         <span title="Entwicklungskarten">${p.devCount} Entw.</span>
       </div>
-      ${off ? '<span class="pstate off">getrennt</span>' : discarding ? '<span class="pstate">wirft ab …</span>' : ''}
+      ${away ? `<span class="pstate away">${icon('bot', 11)} KI spielt</span>` : off ? '<span class="pstate off">getrennt</span>' : discarding ? '<span class="pstate">wirft ab …</span>' : ''}
+      ${timed ? `<div class="ptimer"><span class="bar"><i data-clock="bar"></i></span><span class="t" data-clock="text"></span></div>` : ''}
       ${popsFor(p.idx)}
     </li>`;
   }).join('');
@@ -790,6 +895,7 @@ function renderTurnCard() {
     <div class="medallion">${uiArt('compass', 34)}</div>
     <div class="turn-who">${m.who}</div>
     <div class="turn-status">${saved}</div>
+    <div class="turn-clock" id="turn-clock" hidden></div>
     <div class="sep"><span></span></div>
     <div class="illus">${ILLUS[m.illus]}</div>
     ${m.caption ? `<div class="illus-caption">${m.caption}</div>` : ''}
@@ -1287,6 +1393,18 @@ function handleEvent(ev, st) {
     case 'turn':
       if (mine(ev.player)) { play('turn'); banner(S.room?.hotseat ? `${esc(st.players[ev.player].name)} ist dran` : 'Du bist am Zug', 'Würfle, um die Insel sprechen zu lassen.'); }
       break;
+    case 'left':
+      if (!mine(ev.player)) notice({ player: ev.player, title: `${st.players[ev.player].name} hat die Partie verlassen`, text: `Eine KI spielt für ${st.players[ev.player].name} weiter.` });
+      break;
+    case 'returned':
+      if (!mine(ev.player)) notice({ player: ev.player, title: `${st.players[ev.player].name} ist zurück`, text: 'und übernimmt wieder den eigenen Platz.' });
+      break;
+    case 'timeout':
+      if (mine(ev.player)) {
+        play('error');
+        banner(`${icon('hourglass', 18)} Deine Zeit ist abgelaufen`, 'Das Nötigste wurde automatisch erledigt – es geht weiter.');
+      }
+      break;
     case 'win':
       play('win');
       S.board.celebrate();
@@ -1342,6 +1460,7 @@ function popOnPlayer(idx, text, loss = false) {
 }
 
 function boardToast({ num, red, icon: iconName, iconHtml, title, text, gainsHtml = '', sticky = false }) {
+  if (!settings.boardToasts) return { dismiss() {} };
   const el = document.createElement('div');
   el.className = 'toast';
   el.innerHTML = `${num ? `<span class="num ${red ? 'red' : ''}">${num}</span>` : `<span class="num art-num">${iconHtml || emblem(iconName || 'scroll', 26)}</span>`}
@@ -1533,6 +1652,7 @@ function openDiscard() {
     const m = openModal(S.autoModal || 'discard', `
       <h2>Der Räuber erwacht</h2>
       <div class="modal-lede"><span class="lede-art">${ILLUS.robber}</span><div><b>Wirf ${need} Karten ab</b><span class="hint">Du hältst mehr als 7 Karten. Die Hälfte geht zurück an die Bank.</span></div></div>
+      ${clockHtml('Zeit zum Abwerfen – danach wählt der Zufall')}
       ${pickGrid('discard-grid', { counts: sel, have: p.resources, disabled: (r) => p.resources[r] - sel[r] <= 0 && !sel[r] })}
       <div class="modal-actions"><span class="hint" style="margin-right:auto">${total} / ${need} gewählt</span>
       <button class="btn primary" id="discard-ok" ${total === need ? '' : 'disabled'}>Abwerfen</button></div>`, { closable: false });
@@ -1571,6 +1691,7 @@ function openIncoming() {
     </div>
     ${others.length ? `<div class="resp-mini">${others.map(([i, r]) => `<span class="rm ${r}" title="${esc(st.players[i].name)}">${avatar(st.players[i], 22)}${r === 'accepted' ? icon('check', 13) : r === 'declined' ? icon('close', 13) : '…'}</span>`).join('')}</div>` : ''}
     ${canAccept ? '' : '<p class="hint center">Dir fehlen die gewünschten Karten.</p>'}
+    ${clockHtml('Zeit zum Antworten')}
     <div class="modal-actions">
       <button class="btn danger" id="tr-decline">Ablehnen</button>
       <button class="btn primary" id="tr-accept" ${canAccept ? '' : 'disabled'}>Annehmen</button>
@@ -1751,6 +1872,7 @@ function openTrade({ give: preset = null } = {}) {
     }
     const m = openModal('trade', `
       <h2>Der Handelstisch</h2>
+      ${clockHtml('Deine Zugzeit')}
       <div class="modal-lede"><span class="lede-art">${ILLUS.trade}</span><div><span class="eyebrow">Ein guter Tausch, eine wachsende Insel</span><b>Schaffe Raum für Möglichkeiten.</b><span class="hint">Tausche mit der Bank oder lege ein Angebot für alle auf den Tisch.</span></div></div>
       <div class="partner-tabs two">
         <button class="partner ${bank ? 'active' : ''}" data-partner="bank"><span class="partner-art">${emblem('bank', 34)}</span><div><b>Bank & Häfen</b><small>Sofort tauschen · ${Math.min(...Object.values(ratios))}:1 bestes Verhältnis</small></div></button>
@@ -1952,6 +2074,7 @@ function openSettings() {
   play('page');
   const isHost = amHost();
   const pace = S.room?.pace || 'normal';
+  const turnTime = S.room?.turnTime || 0;
   const m = openModal('settings', `
     <h2 class="modal-title">An deinem Tisch</h2>
     <div class="settings-hero"><span class="lede-art">${ILLUS.island}</span><div><b>Eine Welt nach deinem Geschmack.</b><span class="hint">Stelle Detail, Klang, Tempo und Bewegung der Insel ein.</span></div></div>
@@ -1960,6 +2083,7 @@ function openSettings() {
         <label class="mini">Grafikqualität
           <select id="set-quality"><option value="ultra">Ultra – feinste Texturen, weiche Schatten & Tiefe</option><option value="high">Hoch – Schatten & volle Details</option><option value="medium">Mittel</option><option value="low">Niedrig – für schwächere Geräte</option></select></label>
         ${toggleHtml('set-holo', settings.holograms, 'Bauvorschau als Hologramme')}
+        ${toggleHtml('set-toasts', settings.boardToasts, 'Hinweise unten auf dem Brett (Würfel, Erträge, Handel)')}
       </section>
       <section><h3>${emblem('bell', 28)} Der Klang</h3><p class="hint">Würfel, Pergament, Holz, Stein und warme Glocken.</p>
         ${toggleHtml('set-sound', settings.sound, 'Klang an')}
@@ -1968,8 +2092,11 @@ function openSettings() {
         <div class="sound-grid">${Object.entries(SOUNDS).filter(([k]) => k !== 'error').map(([k, s]) => `<button class="sound-btn" data-sound="${k}">${emblem(s.icon, 20)} ${s.label}</button>`).join('')}</div>
       </section>
       <section><h3>${emblem('hourglass', 28)} Das Tempo</h3><p class="hint">Lass deine Mitspieler sich Zeit nehmen – oder halte das Spiel in Bewegung.</p>
+        <span class="mini">Tempo der KI</span>
         <div class="seg" id="set-pace">${Object.entries(PACE_LABEL).map(([k, l]) => `<button data-pace="${k}" class="${pace === k ? 'on' : ''}" ${isHost ? '' : 'disabled'}>${l}</button>`).join('')}</div>
-        ${isHost ? '' : '<p class="hint">Nur der Gastgeber kann das Tempo ändern.</p>'}
+        <span class="mini">Zugzeit pro Spieler</span>
+        <div class="seg small" id="set-time">${TURN_TIMES.map(([v]) => `<button data-time="${v}" class="${turnTime === v ? 'on' : ''}" ${isHost && S.room ? '' : 'disabled'}>${TURN_TIME_SHORT[v]}</button>`).join('')}</div>
+        <p class="hint">${isHost ? 'Läuft die Zeit ab, wird das Nötigste automatisch erledigt und der Zug endet.' : 'Nur der Gastgeber kann Tempo und Zugzeit ändern.'}</p>
       </section>
       <section><h3>${emblem('ship', 28)} Die Bewegung</h3><p class="hint">Lieber einen ruhigen Tisch? Halte Wasser und Kamera still.</p>
         ${toggleHtml('set-cine', settings.cinematic, 'Kamerafahrten (alle)')}
@@ -1985,6 +2112,10 @@ function openSettings() {
   $('#set-quality', m).value = settings.quality;
   $('#set-quality', m).addEventListener('change', (e) => { settings.quality = e.target.value; });
   $('#set-holo', m).addEventListener('change', (e) => { settings.holograms = e.target.checked; });
+  $('#set-toasts', m).addEventListener('change', (e) => {
+    settings.boardToasts = e.target.checked;
+    if (!e.target.checked) $('#toasts').innerHTML = '';
+  });
   $('#set-sound', m).addEventListener('change', (e) => { settings.sound = e.target.checked; updateSoundBtn(); });
   $('#set-amb', m).addEventListener('change', (e) => { settings.ambience = e.target.checked; });
   $('#set-volume', m).addEventListener('input', (e) => { settings.volume = Number(e.target.value) / 100; $('#vol-val', m).textContent = `${e.target.value}%`; });
@@ -1997,6 +2128,10 @@ function openSettings() {
   $$('[data-pace]', m).forEach((b) => b.addEventListener('click', () => {
     send({ t: 'setOptions', pace: b.dataset.pace });
     $$('[data-pace]', m).forEach((x) => x.classList.toggle('on', x === b));
+  }));
+  $$('[data-time]', m).forEach((b) => b.addEventListener('click', () => {
+    send({ t: 'setOptions', turnTime: Number(b.dataset.time) });
+    $$('[data-time]', m).forEach((x) => x.classList.toggle('on', x === b));
   }));
 }
 

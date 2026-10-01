@@ -12,6 +12,9 @@ const ROOM_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const LOBBY_TTL_MS = 30 * 60 * 1000; // nie gestartete Räume
 const PACE = { relaxed: 1.6, normal: 1, fast: 0.45 };
 const AFTER_ROLL_MS = 3800; // Zeit für die Würfel-Kamerafahrt, bevor ein Bot weiterspielt
+export const TURN_TIMES = [0, 60, 90, 120, 180, 300]; // Zugzeit in Sekunden (0 = ohne Zeitlimit)
+const DEFAULT_TURN_TIME = 120; // für Online-Räume mit Freunden
+const DISCARD_MAX_MS = 45_000; // Zeit zum Abwerfen nach einer 7 (höchstens so lang wie ein Zug)
 
 /**
  * @param {object} [opts]
@@ -25,6 +28,7 @@ export function createLobby({ botDelayScale = 1, onSave = () => {}, onDelete = (
 
   function dropRoom(room) {
     clearTimeout(room.timer);
+    clearTimeout(room.clockTimer);
     rooms.delete(room.code);
     onDelete(room.code);
   }
@@ -84,24 +88,27 @@ export function createLobby({ botDelayScale = 1, onSave = () => {}, onDelete = (
       vpToWin: room.vpToWin,
       hotseat: !!room.hotseat,
       pace: room.pace,
-      seats: room.seats.map((s, i) => ({ seat: i, name: s.name, color: s.color, isBot: s.isBot, connected: s.isBot || !!s.conn, left: !!s.left })),
+      turnTime: room.turnTime || 0,
+      seats: room.seats.map((s, i) => ({ seat: i, name: s.name, color: s.color, isBot: s.isBot, connected: s.isBot || !!s.conn, left: !!s.left, away: !!s.away })),
     };
   }
 
   function broadcast(room) {
     room.lastActive = Date.now();
+    syncClock(room);
     const info = roomInfo(room);
+    const clock = clockInfo(room);
     const conns = new Map();
     room.seats.forEach((s) => { if (s.conn) conns.set(s.conn, s.token); });
     for (const [conn, token] of conns) {
       const mine = room.seats.map((s, i) => (s.token === token ? i : -1)).filter((i) => i >= 0);
       const you = mine.length > 1 ? activeLocalSeat(room, token) : mine[0];
       send(conn, { t: 'room', room: info, you, local: mine.length > 1 ? mine : undefined });
-      if (room.game) send(conn, { t: 'state', state: viewFor(room.game, you) });
+      if (room.game) send(conn, { t: 'state', state: viewFor(room.game, you), clock });
     }
     for (const conn of room.spectators) {
       send(conn, { t: 'room', room: info, you: null });
-      if (room.game) send(conn, { t: 'state', state: viewFor(room.game, -1) });
+      if (room.game) send(conn, { t: 'state', state: viewFor(room.game, -1), clock });
     }
     onSave(room);
   }
@@ -172,6 +179,149 @@ export function createLobby({ botDelayScale = 1, onSave = () => {}, onDelete = (
     }, botWait(room));
   }
 
+  // Eintrag in Chronik und Ereignisliste, wie ihn auch die Spiellogik schreibt
+  function note(g, player, text, icon, event) {
+    g.log.push({ player, text, icon, turn: g.turn ? g.turn.number : 0 });
+    if (g.log.length > 200) g.log.splice(0, g.log.length - 200);
+    if (event) {
+      g.seq += 1;
+      g.events.push({ ...event, seq: g.seq });
+      if (g.events.length > 30) g.events.splice(0, g.events.length - 30);
+    }
+  }
+
+  // Sitzt außer diesem Spieler noch ein Mensch am Tisch, der etwas mitbekommen sollte?
+  function othersAtTable(room, token) {
+    return room.seats.some((o) => !o.isBot && !o.left && o.token !== token);
+  }
+
+  // Spieler verlässt eine laufende Partie: eine KI übernimmt sofort, die anderen werden informiert
+  function markAway(room, idxs) {
+    const g = room.game;
+    for (const i of idxs) {
+      const s = room.seats[i];
+      if (s.away || s.isBot) continue;
+      s.away = true;
+      if (g && g.phase !== 'ended' && othersAtTable(room, s.token)) {
+        note(g, i, `${s.name} hat die Partie verlassen. Eine KI spielt für ${s.name} weiter.`, 'leave', { type: 'left', player: i });
+      }
+    }
+  }
+
+  // ---------- Zugzeit ----------
+  // Die Uhr läuft pro Zug (in der Gründung pro Bauschritt). Nach einer 7 pausiert sie, solange abgeworfen
+  // wird – das Abwerfen hat eine eigene, kürzere Frist. Sitzt kein Mensch verbunden am Tisch, steht sie still.
+
+  function clockKey(g) {
+    if (g.phase === 'setup') return `s:${g.setup.index}:${g.setup.step}`;
+    return `p:${g.turn.number}`;
+  }
+
+  function syncClock(room, now = Date.now()) {
+    const g = room.game;
+    const limit = (room.turnTime || 0) * 1000;
+    if (!g || !limit || (g.phase !== 'setup' && g.phase !== 'play')) {
+      room.clock = null;
+      clearTimeout(room.clockTimer);
+      return;
+    }
+    const key = clockKey(g);
+    let c = room.clock;
+    if (!c || c.key !== key) c = room.clock = { key, endsAt: now + limit, discard: null, pausedAt: null };
+    const watched = room.seats.some((s) => !s.isBot && s.conn);
+    if (!watched && !c.pausedAt) c.pausedAt = now;
+    if (watched && c.pausedAt) {
+      const d = now - c.pausedAt;
+      c.endsAt += d;
+      if (c.discard) { c.discard.since += d; c.discard.endsAt += d; }
+      c.pausedAt = null;
+    }
+    const discarding = g.phase === 'play' && g.turn.pending === 'discard';
+    if (discarding && !c.discard) c.discard = { since: now, endsAt: now + Math.min(limit, DISCARD_MAX_MS) };
+    if (!discarding && c.discard) {
+      c.endsAt += now - c.discard.since;
+      c.discard = null;
+    }
+    clearTimeout(room.clockTimer);
+    if (c.pausedAt) return;
+    const due = (c.discard ? c.discard.endsAt : c.endsAt) - now;
+    room.clockTimer = setTimeout(() => checkClock(room), Math.max(0, due) + 50);
+    room.clockTimer?.unref?.(); // Node: die Uhr allein hält den Prozess nicht am Leben (z. B. in Tests)
+  }
+
+  // Was mindestens geschehen muss, damit es weitergeht – gebaut oder gehandelt wird nicht automatisch
+  function forcedAction(g, idx) {
+    const t = g.turn;
+    if (g.phase === 'setup') return g.current === idx ? botAction(g, idx) : null;
+    if (t.pending === 'discard') return t.discards?.[idx] ? botAction(g, idx) : null;
+    if (g.trade) {
+      if (g.trade.from === idx) return { type: 'cancelTrade' };
+      if (g.trade.responses[idx] === 'pending') return { type: 'respondTrade', response: 'decline' };
+      return null;
+    }
+    if (g.current !== idx) return null;
+    if (t.pending === 'robber') return botAction(g, idx);
+    if (t.freeRoads > 0) {
+      const a = botAction(g, idx);
+      if (a) return a;
+      t.freeRoads = 0; // kein Platz mehr für kostenlose Straßen
+    }
+    return t.rolled ? { type: 'endTurn' } : { type: 'roll' };
+  }
+
+  function checkClock(room, now = Date.now()) {
+    const g = room.game;
+    if (!g || rooms.get(room.code) !== room) return;
+    syncClock(room, now);
+    let c = room.clock;
+    let changed = false;
+    const timedOut = new Set();
+    // Abgelaufene Fristen nacheinander abarbeiten; endet dabei der Zug, beginnt eine neue Frist
+    for (let guard = 0; c && !c.pausedAt && guard < 12; guard++) {
+      const discardPhase = !!c.discard;
+      if ((discardPhase ? c.discard.endsAt : c.endsAt) > now) break;
+      const actors = discardPhase
+        ? Object.keys(g.turn.discards || {}).map(Number)
+        : g.trade && g.trade.from === g.current ? [g.current] : pendingActors(g);
+      let progressed = false;
+      for (const idx of actors) {
+        const action = forcedAction(g, idx);
+        if (!action) continue;
+        if (applyAction(g, idx, action).ok) {
+          progressed = true;
+          if (!g.players[idx].isBot) timedOut.add(idx);
+        }
+      }
+      if (!progressed) break;
+      changed = true;
+      syncClock(room, now);
+      c = room.clock;
+    }
+    for (const idx of timedOut) {
+      note(g, idx, `Die Zeit von ${g.players[idx].name} ist abgelaufen – es geht automatisch weiter.`, 'hourglass', { type: 'timeout', player: idx });
+    }
+    if (changed) {
+      broadcast(room);
+      pump(room);
+    }
+  }
+
+  function clockInfo(room, now = Date.now()) {
+    const c = room.clock;
+    if (!c || !room.game) return null;
+    const limit = (room.turnTime || 0) * 1000;
+    const ref = c.pausedAt || now;
+    const discard = !!c.discard;
+    const remaining = Math.max(0, (discard ? c.discard.endsAt : c.endsAt) - ref);
+    return {
+      mode: discard ? 'discard' : 'turn',
+      total: discard ? Math.min(limit, DISCARD_MAX_MS) : limit,
+      remaining,
+      paused: !!c.pausedAt,
+      actors: discard ? Object.keys(room.game.turn.discards || {}).map(Number) : pendingActors(room.game),
+    };
+  }
+
   function startGame(room) {
     room.game = createGame({
       players: room.seats.map((s) => ({ name: s.name, color: s.color, isBot: s.isBot })),
@@ -179,6 +329,8 @@ export function createLobby({ botDelayScale = 1, onSave = () => {}, onDelete = (
       vpToWin: room.vpToWin,
     });
     room.lastLocal = undefined;
+    room.clock = null;
+    for (const s of room.seats) s.away = false;
     broadcast(room);
     pump(room);
   }
@@ -188,6 +340,9 @@ export function createLobby({ botDelayScale = 1, onSave = () => {}, onDelete = (
       code: makeCode(), host: 0, seats: [], spectators: new Set(), game: null, timer: null,
       vpToWin: [8, 10, 12, 14].includes(msg.vpToWin) ? msg.vpToWin : 10,
       hotseat: false, pace: PACE[msg.pace] ? msg.pace : 'normal',
+      // Gegen die KI und an einem Gerät wartet niemand – dort ist die Zugzeit zunächst aus
+      turnTime: TURN_TIMES.includes(msg.turnTime) ? msg.turnTime : msg.solo || msg.hotseat ? 0 : DEFAULT_TURN_TIME,
+      clock: null, clockTimer: null,
       lastActive: Date.now(), createdAt: Date.now(),
     };
   }
@@ -219,6 +374,8 @@ export function createLobby({ botDelayScale = 1, onSave = () => {}, onDelete = (
       case 'deleteGame': {
         const r = rooms.get(String(msg.code || ''));
         if (!r) return;
+        const mine = r.seats.map((s, i) => (s.token === conn.token && !s.left ? i : -1)).filter((i) => i >= 0);
+        markAway(r, mine);
         for (const s of r.seats) {
           if (s.token === conn.token) { s.left = true; if (s.conn === conn) s.conn = null; s.disconnectedAt = 1; }
         }
@@ -263,6 +420,14 @@ export function createLobby({ botDelayScale = 1, onSave = () => {}, onDelete = (
             if (s.conn && s.conn !== conn) { send(s.conn, { t: 'kicked', msg: 'In einem anderen Tab geöffnet.' }); s.conn.room = null; }
             s.conn = conn;
             s.disconnectedAt = null;
+            if (s.away) {
+              s.away = false;
+              const g = r.game;
+              if (g && g.phase !== 'ended' && othersAtTable(r, s.token)) {
+                const i = r.seats.indexOf(s);
+                note(g, i, `${s.name} ist zurück und spielt wieder selbst.`, 'return', { type: 'returned', player: i });
+              }
+            }
           }
           if (!r.game && msg.name && existing.length === 1) existing[0].name = cleanName(msg.name, existing[0].name);
         } else if (!r.game && !r.hotseat && r.seats.length < MAX_SEATS) {
@@ -321,6 +486,10 @@ export function createLobby({ botDelayScale = 1, onSave = () => {}, onDelete = (
         if (!isHost) return;
         if (!room.game && [8, 10, 12, 14].includes(msg.vpToWin)) room.vpToWin = msg.vpToWin;
         if (PACE[msg.pace]) room.pace = msg.pace;
+        if (TURN_TIMES.includes(msg.turnTime) && msg.turnTime !== room.turnTime) {
+          room.turnTime = msg.turnTime;
+          room.clock = null; // neue Zugzeit gilt ab sofort mit voller Frist
+        }
         broadcast(room);
         return;
       }
@@ -372,6 +541,7 @@ export function createLobby({ botDelayScale = 1, onSave = () => {}, onDelete = (
       const h = room.seats.findIndex((s) => s.token === hostToken);
       room.host = h >= 0 ? h : room.seats.findIndex((s) => !s.isBot);
     } else {
+      if (explicit && room.game) markAway(room, idxs);
       for (const i of idxs) {
         room.seats[i].conn = null;
         room.seats[i].disconnectedAt = explicit && room.game ? 1 : Date.now(); // 1 = sofort vom Bot übernehmen
@@ -407,7 +577,10 @@ export function createLobby({ botDelayScale = 1, onSave = () => {}, onDelete = (
         const anyone = room.seats.some((s) => s.conn) || room.spectators.size;
         const ttl = room.game ? ROOM_TTL_MS : LOBBY_TTL_MS;
         if (!anyone && now - room.lastActive > ttl) dropRoom(room);
-        else pump(room);
+        else {
+          pump(room);
+          checkClock(room, now);
+        }
       }
     },
 
@@ -415,8 +588,9 @@ export function createLobby({ botDelayScale = 1, onSave = () => {}, onDelete = (
     serialize(room) {
       return {
         code: room.code, host: room.host, vpToWin: room.vpToWin, hotseat: room.hotseat, pace: room.pace,
+        turnTime: room.turnTime || 0, clock: room.clock || null,
         lastActive: room.lastActive, createdAt: room.createdAt, lastLocal: room.lastLocal, game: room.game,
-        seats: room.seats.map(({ token, name, color, isBot, left, disconnectedAt }) => ({ token, name, color, isBot, left, disconnectedAt })),
+        seats: room.seats.map(({ token, name, color, isBot, left, away, disconnectedAt }) => ({ token, name, color, isBot, left, away, disconnectedAt })),
       };
     },
 
@@ -428,6 +602,9 @@ export function createLobby({ botDelayScale = 1, onSave = () => {}, onDelete = (
         seats: data.seats.map((s) => ({ ...s, conn: null, disconnectedAt: s.disconnectedAt || now })),
         spectators: new Set(),
         timer: null,
+        clockTimer: null,
+        turnTime: data.turnTime || 0,
+        clock: data.clock || null,
       });
       return true;
     },

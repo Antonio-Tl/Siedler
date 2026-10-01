@@ -57,6 +57,8 @@ Jede Partie wird **automatisch gespeichert** – auch über einen Neustart hinwe
 - **Im selben WLAN:** Beim Start zeigt das Terminal eine Adresse wie `http://192.168.1.23:5274`. Diese Adresse (mit Raumcode bzw. Einladungslink) an die Mitspieler schicken.
 - **Über das Internet:** Am einfachsten [online bei Cloudflare](#online-bei-cloudflare) – dann braucht es keinen eigenen Rechner. Alternativ muss Port 5274 von außen erreichbar sein, z. B. per Portweiterleitung, [Tailscale](https://tailscale.com) oder `ngrok http 5274`.
 - **Verbindung verloren?** Einfach neu laden – dein Platz bleibt reserviert. In Online-Partien spielt nach 45 Sekunden eine KI für dich weiter, bis du zurück bist.
+- **Partie verlassen:** Eine KI übernimmt sofort deinen Platz, alle anderen bekommen oben eine kurze Nachricht (und eine weitere, wenn du zurückkommst).
+- **Zugzeit:** Der Gastgeber legt fest, wie lange jeder Zug dauern darf (aus, 1, 1½, 2, 3 oder 5 Minuten; online standardmäßig 2 Minuten). Läuft sie ab, wird nur das Nötigste automatisch erledigt – würfeln, Räuber versetzen, abwerfen – und der Zug endet. Nach einer 7 gibt es eine eigene Frist zum Abwerfen, die Zugzeit pausiert solange.
 - Mehrere Browser-Tabs auf einem Rechner gelten als verschiedene Spieler – praktisch zum Ausprobieren.
 
 ### Online bei Cloudflare
@@ -102,7 +104,7 @@ Alternativ im Cloudflare-Dashboard unter *Workers & Pages → Erstellen → Repo
 
 ### Einstellungen („An deinem Tisch“ ⚙)
 
-Grafikqualität (Ultra/Hoch/Mittel/Niedrig – „Ultra“ mit 2048er-Geländetexturen samt Relief, weichen 4K-Schatten, Umgebungslicht und dichterer Landschaft), Klang und Lautstärke mit Klangvorschau, Meeresrauschen, Tempo der KI, Kamerafahrten (insgesamt oder einzeln für Würfel, Erträge, Räuber und Bauten), bewegte Szenerie und die Hologramm-Vorschau lassen sich jederzeit anpassen.
+Grafikqualität (Ultra/Hoch/Mittel/Niedrig – „Ultra“ mit 2048er-Geländetexturen samt Relief, weichen 4K-Schatten, Umgebungslicht und dichterer Landschaft), Klang und Lautstärke mit Klangvorschau, Meeresrauschen, Tempo der KI, Zugzeit, Hinweise unten auf dem Brett, Kamerafahrten (insgesamt oder einzeln für Würfel, Erträge, Räuber und Bauten), bewegte Szenerie und die Hologramm-Vorschau lassen sich jederzeit anpassen.
 
 Tipp: Ein Klick auf eine Rohstoffkarte in deiner Hand öffnet direkt den Handelstisch mit diesem Rohstoff.
 

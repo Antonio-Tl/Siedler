@@ -176,6 +176,9 @@
               <label class="mini">Ziel
                 <select id="hs-vp"><option value="8">8 Siegpunkte</option><option value="10" selected>10 Siegpunkte</option><option value="12">12 Siegpunkte</option></select>
               </label>
+              <label class="mini">Zugzeit
+                <select id="hs-time" class="turn-time-select"></select>
+              </label>
             </div>
           </div>
 
@@ -218,6 +221,9 @@
             <label class="mini">Tempo
               <select id="room-pace"><option value="relaxed">Gemütlich</option><option value="normal">Normal</option><option value="fast">Zügig</option></select>
             </label>
+            <label class="mini">Zugzeit
+              <select id="room-time" class="turn-time-select"></select>
+            </label>
           </div>
           <p class="hint" id="room-hint"></p>
           <div class="row end">
@@ -235,6 +241,7 @@
   <canvas id="confetti" class="confetti" hidden></canvas>
   <div id="modal-root"></div>
   <div class="global-toast" id="global-toast" hidden></div>
+  <div class="notices" id="notices" aria-live="polite"></div>
 
   <script type="module" src="/app.js"></script>
 </body>

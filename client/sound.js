@@ -78,6 +78,7 @@ export const SOUNDS = {
   award: { label: 'Auszeichnung', icon: 'medal', play() { [523, 659, 784].forEach((f, i) => bell(f, i * 0.1, 0.07)); } },
   win: { label: 'Sieg', icon: 'crown', play() { [523, 659, 784, 1047].forEach((f, i) => bell(f, i * 0.14, 0.09)); tone(1047, 1.5, { type: 'triangle', vol: 0.05, delay: 0.6 }); } },
   error: { label: 'Fehler', icon: 'warning', play() { tone(200, 0.15, { type: 'square', vol: 0.05 }); } },
+  tick: { label: 'Zugzeit', icon: 'hourglass', play() { tone(1250, 0.05, { type: 'square', vol: 0.035 }); tone(620, 0.08, { type: 'triangle', vol: 0.05, delay: 0.03 }); } },
   click: { label: 'Knopf', icon: 'click', play() { tone(900, 0.04, { type: 'square', vol: 0.025 }); } },
 };
 

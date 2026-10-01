@@ -18,6 +18,7 @@ const DEFAULTS = {
   camBuild: true, // zu neuen Bauten der Mitspieler
   scenery: true, // bewegtes Wasser, Boote, Wolken
   holograms: true, // Bauvorschau auf dem Brett
+  boardToasts: true, // Hinweise unten auf dem Brett (Würfel, Erträge, Handel)
 };
 
 let current = { ...DEFAULTS };
