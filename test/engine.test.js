@@ -117,6 +117,24 @@ test('Längste Straße wird berechnet und durch Siedlungen unterbrochen', () => 
   assert.equal(longestRoadFor(g, 0), 3);
 });
 
+test('Auszeichnungen melden Gewinner, Vorbesitzer und Größe', () => {
+  const g = setupGame(31);
+  const cur = g.current;
+  const other = (cur + 1) % 4;
+  g.turn.rolled = true;
+  const knights = (n) => Array.from({ length: n }, () => ({ type: 'knight', bought: 0 }));
+  // Erst führt ein Mitspieler mit 3 Rittern, dann überholt der aktuelle Spieler mit dem vierten
+  g.players[other].knights = 3;
+  g.largestArmy = { player: other, size: 3 };
+  g.players[cur].knights = 3;
+  g.players[cur].devCards = knights(1);
+  g.turn.number = 5;
+  const r = applyAction(g, cur, { type: 'playDev', card: 'knight' });
+  assert.ok(r.ok, r.error);
+  const ev = g.events.findLast((e) => e.type === 'award');
+  assert.deepEqual({ award: ev.award, player: ev.player, from: ev.from, size: ev.size }, { award: 'largestArmy', player: cur, from: other, size: 4 });
+});
+
 test('Sicht verbirgt fremde Handkarten', () => {
   const g = setupGame(13);
   const view = viewFor(g, 0);

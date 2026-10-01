@@ -391,9 +391,10 @@ function updateLongestRoad(state) {
   if (now !== prev) {
     if (now !== null) {
       addLog(state, now, `${state.players[now].name} erhält die längste Handelsstraße (${max}).`, 'road');
-      addEvent(state, { type: 'award', award: 'longestRoad', player: now });
+      addEvent(state, { type: 'award', award: 'longestRoad', player: now, from: prev, size: max });
     } else if (prev !== null) {
       addLog(state, prev, 'Die längste Handelsstraße ist unterbrochen – niemand hält sie.', 'road');
+      addEvent(state, { type: 'award', award: 'longestRoad', player: null, from: prev, size: max });
     }
   }
 }
@@ -402,9 +403,10 @@ function updateLargestArmy(state, idx) {
   const k = state.players[idx].knights;
   const cur = state.largestArmy;
   if (k >= 3 && (cur.player === null ? true : k > cur.size) && cur.player !== idx) {
+    const prev = cur.player;
     state.largestArmy = { player: idx, size: k };
     addLog(state, idx, `${state.players[idx].name} führt nun die größte Rittermacht an.`, 'sword');
-    addEvent(state, { type: 'award', award: 'largestArmy', player: idx });
+    addEvent(state, { type: 'award', award: 'largestArmy', player: idx, from: prev, size: k });
   } else if (cur.player === idx) {
     cur.size = k;
   }

@@ -741,20 +741,48 @@ function clockHtml(label) {
 
 // ---------- Nachrichten oben am Bildschirmrand ----------
 
-function notice({ player = null, title, text = '', art = 'users' }) {
+// html: bereits sicherer Inhalt (z. B. Rohstoff-Grafiken); art: Motiv statt Porträt; variant: Farbakzent
+function notice({ player = null, title, text = '', html = '', art = null, variant = '', duration = 7000, sound = 'page' }) {
   const box = $('#notices');
-  const p = player !== null ? S.state?.players[player] : null;
+  const p = player !== null && !art ? S.state?.players[player] : null;
   const el = document.createElement('div');
-  el.className = 'notice';
-  el.innerHTML = `<span class="n-art">${p ? avatar(p, 36) : emblem(art, 32)}</span>
-    <div class="n-text"><b>${esc(title)}</b>${text ? `<small>${esc(text)}</small>` : ''}</div>
+  el.className = `notice ${variant}`;
+  el.innerHTML = `<span class="n-art">${p ? avatar(p, 36) : emblem(art || 'users', 34)}</span>
+    <div class="n-text"><b>${esc(title)}</b>${text ? `<small>${esc(text)}</small>` : ''}${html ? `<div class="n-rich">${html}</div>` : ''}</div>
     <button class="close" aria-label="Schließen">${icon('close', 11)}</button>`;
   box.appendChild(el);
   while (box.children.length > 3) box.firstChild.remove();
   const kill = () => { if (!el.isConnected) return; el.classList.add('out'); setTimeout(() => el.remove(), 350); };
   el.querySelector('.close').addEventListener('click', kill);
-  setTimeout(kill, 7000);
-  play('page');
+  setTimeout(kill, duration);
+  if (sound) play(sound);
+}
+
+// Rohstoffe kompakt mit Grafik: „2 [Holz] 1 [Lehm]“
+function resChips(res) {
+  return RESOURCES.filter((r) => res?.[r]).map((r) => `<span class="n-res">${resourceArt(r, 18)}<b>${res[r]}</b> ${RES_LABEL[r]}</span>`).join('');
+}
+
+function tradeNotice(title, gives, gets) {
+  notice({
+    art: 'trade', variant: 'green', title, duration: 4500, sound: null,
+    html: `<span class="n-swap"><span class="n-side">${resChips(gives) || '—'}</span>${icon('arrowRight', 14)}<span class="n-side">${resChips(gets) || '—'}</span></span>`,
+  });
+}
+
+// Auszeichnung gewonnen: kurze Feier mitten auf dem Brett
+function awardCelebration(ev, st) {
+  const road = ev.award === 'longestRoad';
+  const el = document.createElement('div');
+  el.className = 'award-pop';
+  el.innerHTML = `<div class="ap-glow"></div>
+    <div class="ap-art">${emblem(road ? 'road' : 'sword', 96)}</div>
+    <div class="eyebrow">Auszeichnung</div>
+    <h3>${road ? 'Längste Handelsstraße' : 'Größte Rittermacht'}</h3>
+    <p>${road ? `${ev.size} zusammenhängende Straßen` : `${ev.size} ausgespielte Ritter`}${ev.from !== null && ev.from !== undefined ? ` · übernommen von ${esc(st.players[ev.from].name)}` : ''}</p>
+    <div class="ap-vp">${icon('crown', 16)} +2 Siegpunkte</div>`;
+  $('#board-wrap').appendChild(el);
+  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 500); }, 4200);
 }
 
 function renderPlayers() {
@@ -769,9 +797,10 @@ function renderPlayers() {
     const timed = clockFor(p.idx);
     const discarding = st.turn.pending === 'discard' && st.turn.discards && st.turn.discards[p.idx];
     const isMe = p.idx === S.you;
-    const extra = [p.knights ? `${icon('sword', 11)} ${p.knights}` : '', p.longestRoad >= 3 ? `${icon('road', 11)} ${p.longestRoad}` : ''].filter(Boolean).join(' · ');
+    const roadHolder = st.longestRoad.player === p.idx;
+    const armyHolder = st.largestArmy.player === p.idx;
     return `<li class="player ${active ? 'active' : ''} ${isMe ? 'me' : ''}" data-idx="${p.idx}" style="--pc:${COLOR_HEX[p.color]}">
-      <div class="portrait-wrap">${portraitArt(p.idx, COLOR_HEX[p.color], 58)}</div>
+      <div class="portrait-wrap">${portraitArt(p.idx, COLOR_HEX[p.color], 54)}</div>
       <div class="pinfo">
         <div class="pname">${esc(isMe && !S.room?.hotseat ? 'Du' : p.name)}${p.isBot ? '<small>KI</small>' : ''}</div>
         <div class="phouse">${esc(COLOR_LABEL[p.color] || '')}</div>
@@ -779,8 +808,11 @@ function renderPlayers() {
       </div>
       <div class="pstats">
         <span title="Rohstoffkarten"><i class="mini-card"></i>${p.resourceCount} ${p.resourceCount === 1 ? 'Karte' : 'Karten'}</span>
-        ${extra ? `<span class="pextra" title="Ritter · längste eigene Straße">${extra}</span>` : ''}
         <span title="Entwicklungskarten">${p.devCount} Entw.</span>
+      </div>
+      <div class="precords">
+        <span class="rec ${roadHolder ? 'held' : ''}" title="Längste zusammenhängende Straße${roadHolder ? ' – hält die längste Handelsstraße (+2)' : ' (ab 5 gibt es die Auszeichnung)'}">${icon('road', 13)}<b>${p.longestRoad}</b> ${p.longestRoad === 1 ? 'Straße' : 'Straßen'}${roadHolder ? '<i>+2</i>' : ''}</span>
+        <span class="rec ${armyHolder ? 'held' : ''}" title="Ausgespielte Ritter${armyHolder ? ' – führt die größte Rittermacht (+2)' : ' (ab 3 gibt es die Auszeichnung)'}">${icon('sword', 13)}<b>${p.knights}</b> Ritter${armyHolder ? '<i>+2</i>' : ''}</span>
       </div>
       ${away ? `<span class="pstate away">${icon('bot', 11)} KI spielt</span>` : off ? '<span class="pstate off">getrennt</span>' : discarding ? '<span class="pstate">wirft ab …</span>' : ''}
       ${timed ? `<div class="ptimer"><span class="bar"><i data-clock="bar"></i></span><span class="t" data-clock="text"></span></div>` : ''}
@@ -1375,7 +1407,8 @@ function handleEvent(ev, st) {
       break;
     case 'trade':
       play('coin');
-      if (mine(ev.a) || mine(ev.b)) boardToast({ icon: 'trade', title: 'Handel abgeschlossen', text: `${esc(nameOf(ev.a))} und ${esc(nameOf(ev.b))} tauschen.` });
+      if (mine(ev.a)) tradeNotice(`Handel mit ${st.players[ev.b].name} abgeschlossen`, ev.aGives, ev.bGives);
+      else if (mine(ev.b)) tradeNotice(`Handel mit ${st.players[ev.a].name} abgeschlossen`, ev.bGives, ev.aGives);
       break;
     case 'tradeDeclined':
       if (mine(ev.from)) boardToast({ icon: 'hand', title: 'Niemand möchte tauschen', text: 'Alle Mitspieler haben dein Angebot abgelehnt.' });
@@ -1385,11 +1418,29 @@ function handleEvent(ev, st) {
       break;
     case 'bankTrade':
       play('coin');
+      if (mine(ev.player)) tradeNotice('Tausch mit der Bank abgeschlossen', ev.give, ev.get);
       break;
-    case 'award':
+    case 'award': {
+      const road = ev.award === 'longestRoad';
+      const what = road ? 'die längste Handelsstraße' : 'die größte Rittermacht';
+      const art = road ? 'road' : 'sword';
       play('award');
-      banner(ev.award === 'longestRoad' ? `${emblem('road', 24)} Längste Handelsstraße` : `${emblem('sword', 24)} Größte Rittermacht`, `${mine(ev.player) ? 'Du erhältst' : `${esc(st.players[ev.player].name)} erhält`} 2 Siegpunkte.`);
+      if (ev.player === null) {
+        // Straße unterbrochen – niemand hält sie mehr
+        notice({ art, title: 'Die längste Handelsstraße ist unterbrochen', text: mine(ev.from) ? 'Du verlierst 2 Siegpunkte – niemand hält sie gerade.' : `${st.players[ev.from].name} verliert sie – niemand hält sie gerade.`, sound: null });
+      } else if (mine(ev.player)) {
+        awardCelebration(ev, st);
+        notice({ art, variant: 'gold', title: `Du erhältst ${what}!`, text: `+2 Siegpunkte · ${road ? `${ev.size} Straßen am Stück` : `${ev.size} Ritter`}`, sound: null });
+      } else {
+        const name = st.players[ev.player].name;
+        notice({
+          art, variant: mine(ev.from) ? 'red' : 'gold', sound: null,
+          title: mine(ev.from) ? `${name} nimmt dir ${what} ab` : `${name} erhält ${what}`,
+          text: mine(ev.from) ? 'Du verlierst 2 Siegpunkte.' : `+2 Siegpunkte · ${road ? `${ev.size} Straßen am Stück` : `${ev.size} Ritter`}`,
+        });
+      }
       break;
+    }
     case 'turn':
       if (mine(ev.player)) { play('turn'); banner(S.room?.hotseat ? `${esc(st.players[ev.player].name)} ist dran` : 'Du bist am Zug', 'Würfle, um die Insel sprechen zu lassen.'); }
       break;
