@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Partienbuch · Siedlungen</title>
+  <meta name="description" content="Admin-Statistik: wie viele Partien wann gespielt wurden." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M32 3 L57 11 V30 C57 46 45 56 32 61 C19 56 7 46 7 30 V11 Z' fill='%23962c1c' stroke='%23d9b265' stroke-width='4'/%3E%3Cpath d='M23 44 V28 H41 V44 Z M21 22 h5 v7 h-5z M29.5 22 h5 v7 h-5z M38 22 h5 v7 h-5z' fill='%23e6c57c'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="/admin/admin.css" />
+</head>
+<body class="admin intro">
+  <div class="admin-page">
+    <header class="admin-head">
+      <a class="admin-brand" href="/" title="Zum Spiel">
+        <span class="admin-crest" data-art="crest:58"></span>
+        <span><span class="admin-tag">Siedlungen · Schreibstube</span><h1 class="admin-title">Partienbuch</h1></span>
+      </a>
+      <div class="admin-live" id="live" hidden></div>
+      <div class="admin-actions">
+        <button class="btn small" id="btn-refresh" title="Jetzt neu laden"><span data-icon="rotateRight:15"></span> Aktualisieren</button>
+        <button class="btn small danger" id="btn-clear"><span data-icon="trash:15"></span> Statistik löschen</button>
+      </div>
+    </header>
+
+    <div class="admin-sep sep"><span></span></div>
+
+    <!-- Schlüsselabfrage, falls der Server ein ADMIN_KEY gesetzt hat -->
+    <section class="lock-card parchment ornate" id="lock" hidden>
+      <span data-emblem="chest:84"></span>
+      <h2>Nur für die Schreibstube</h2>
+      <p>Dieses Partienbuch ist mit einem Admin-Schlüssel verschlossen.</p>
+      <form id="lock-form" class="lock-form">
+        <label class="field"><span>Admin-Schlüssel</span><input id="lock-input" type="password" autocomplete="current-password" required /></label>
+        <button class="btn primary">Öffnen</button>
+      </form>
+      <p class="lock-error" id="lock-error" hidden>Dieser Schlüssel passt nicht.</p>
+    </section>
+
+    <main class="admin-main" id="main" hidden>
+      <div class="admin-filter">
+        <div class="range" id="range" role="group" aria-label="Zeitraum">
+          <button data-days="7">7 Tage</button>
+          <button data-days="30">30 Tage</button>
+          <button data-days="90">90 Tage</button>
+          <button data-days="365">1 Jahr</button>
+          <button data-days="0">Alles</button>
+        </div>
+        <span class="stamp" id="stamp"></span>
+      </div>
+
+      <section class="empty-card parchment ornate" id="empty" hidden>
+        <span data-emblem="quill:84"></span>
+        <h2>Das Partienbuch ist noch leer</h2>
+        <p>Sobald jemand eine Partie beginnt, steht sie hier – mit Datum, Insel, Spielmodus und allen Siedlern am Tisch.</p>
+      </section>
+
+      <div id="board">
+        <section class="kpis" id="kpis"></section>
+
+        <section class="card parchment ornate">
+          <header class="card-head">
+            <div>
+              <div class="eyebrow">Verlauf</div>
+              <h2 id="chart-title">Partien pro Tag</h2>
+              <p class="card-sub" id="chart-sub"></p>
+            </div>
+            <ul class="legend" id="legend"></ul>
+          </header>
+          <div class="chart" id="chart"></div>
+        </section>
+
+        <div class="two-col">
+          <section class="card parchment ornate">
+            <header class="card-head">
+              <div>
+                <div class="eyebrow">Wann gespielt wird</div>
+                <h2>Wochentag &amp; Uhrzeit</h2>
+                <p class="card-sub" id="heat-sub"></p>
+              </div>
+            </header>
+            <div class="heat" id="heat"></div>
+            <div class="heat-legend" id="heat-legend"></div>
+          </section>
+
+          <section class="card parchment ornate">
+            <header class="card-head">
+              <div>
+                <div class="eyebrow">Am Tisch</div>
+                <h2>Spielmodi &amp; Siedler</h2>
+              </div>
+            </header>
+            <div class="bars" id="bars"></div>
+          </section>
+        </div>
+
+        <section class="card parchment ornate">
+          <header class="card-head">
+            <div>
+              <div class="eyebrow">Chronik</div>
+              <h2>Alle Partien</h2>
+              <p class="card-sub" id="table-sub"></p>
+            </div>
+          </header>
+          <div id="table"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div class="admin-tip" id="tip" role="tooltip" hidden></div>
+  <div class="admin-toast" id="toast" hidden></div>
+  <div id="modal-root"></div>
+
+  <script type="module" src="/admin/admin.js"></script>
+</body>
+</html>

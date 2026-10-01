@@ -140,10 +140,22 @@ npm run cf:deploy  # Cloudflare-Version veröffentlichen
 | Umgebungsvariable | Bedeutung | Standard |
 | --- | --- | --- |
 | `PORT` | Port des Servers | `5274` |
-| `DATA_DIR` | Ordner für die Spielstände | `./data` |
+| `DATA_DIR` | Ordner für die Spielstände (`rooms.json`) und die Statistik (`games.json`) | `./data` |
 | `PERSIST` | `0` schaltet das Speichern ab | an |
+| `ADMIN_KEY` | Schlüssel für die Admin-Seite `/admin` – ohne ist sie nur versteckt, nicht geschützt | – |
 
 Beispiel: `PORT=8080 ./start.command` bzw. unter Windows `set PORT=8080` und danach `start.bat`.
+
+### Admin-Seite (`/admin`)
+
+Unter **`/admin`** (z. B. <http://localhost:5274/admin>) liegt das *Partienbuch* – eine nirgends verlinkte Übersicht, wie viele Partien wann gespielt wurden: Kennzahlen, Partien pro Tag/Woche nach Spielmodus, Wochentag × Uhrzeit, Spielmodi, Siedler pro Partie und eine Liste aller Partien mit Insel, Spielern, Dauer und Ausgang. Über **„Statistik löschen“** wird die Statistik geleert; gespeicherte Partien der Spieler bleiben dabei erhalten.
+
+Erfasst wird jede Partie beim Start, beim Sieg und wenn sie abgebrochen wird. Ist `ADMIN_KEY` gesetzt, fragt die Seite einmal pro Browser-Sitzung nach diesem Schlüssel:
+
+```bash
+ADMIN_KEY=mein-geheimer-schluessel npm start   # Node
+npx wrangler secret put ADMIN_KEY             # Cloudflare (lokal mit „wrangler dev“: ADMIN_KEY=… in .dev.vars)
+```
 
 ### Aufbau
 
@@ -152,13 +164,15 @@ Beispiel: `PORT=8080 ./start.command` bzw. unter Windows `set PORT=8080` und dan
 | `start.command` / `start.bat` | Startdateien für macOS/Linux bzw. Windows |
 | `shared/engine.js` | Regel-Engine – läuft identisch auf Server und Client |
 | `server/lobby.js` | Räume, Lobby, Hot-Seat, Wiederverbinden, Bot-Takt – gemeinsam für Node und Cloudflare |
-| `server/index.js` | Node-Server: Express + WebSocket, Speicherstände in `data/rooms.json` |
-| `worker/index.js` | Cloudflare-Version: Worker + Durable Object (Speicherstände in dessen SQLite-Datenbank) |
+| `server/index.js` | Node-Server: Express + WebSocket, Speicherstände in `data/rooms.json`, Statistik in `data/games.json` |
+| `server/admin.js` | Admin-Statistik: Schlüsselprüfung und Status der Partien – gemeinsam für Node und Cloudflare |
+| `worker/index.js` | Cloudflare-Version: Worker + Durable Object (Speicherstände und Statistik in dessen SQLite-Datenbank) |
 | `wrangler.jsonc`, `scripts/build-cloudflare.js` | Cloudflare-Konfiguration und Build der statischen Dateien nach `dist/` |
 | `server/bot.js` | KI-Siedler |
 | `client/app.js` | Oberfläche, Menü, Dialoge, Handel, Tour, Kamerafahrten |
 | `client/board3d.js` | Three.js-Szene: Kamera, Figuren, Hologramme, Würfel, Effekte |
 | `client/three/` | Texturen, handgemalte Gelände mit Normal-Maps (`terrain.js`), 3D-Modelle (Figuren, Räuber, Deko, Häfen) und Wasser |
+| `client/admin/` | Admin-Seite `/admin` (Partienbuch) |
 | `client/art.js`, `client/art/` | SVG-Grafiken: Rohstoffe, Porträts (`portraits.js`), Linien-Icons (`icons.js`), farbige Motive (`emblems.js`) und große Illustrationen (`scenes.js`) |
 | `test/` | automatisierte Tests |
 

@@ -1,12 +1,13 @@
 // Cloudflare-Version des Servers: Worker + ein Durable Object, das alle Räume verwaltet.
 // Die statischen Dateien (dist/, siehe scripts/build-cloudflare.js) liefert Cloudflare direkt aus;
-// dieser Worker bekommt nur /ws (WebSocket) und /health.
+// dieser Worker bekommt nur /ws (WebSocket), /health und /api/admin/… (Statistik der Admin-Seite /admin).
 //
 // Das Durable Object nutzt die „WebSocket Hibernation API“: Ist gerade nichts zu tun, darf Cloudflare
 // es schlafen legen, ohne dass die Verbindungen der Spieler abreißen. Danach wird der Zustand aus der
 // eingebauten SQLite-Datenbank wiederhergestellt und jede Verbindung wieder ihrem Platz zugeordnet.
 import { DurableObject } from 'cloudflare:workers';
 import { createLobby } from '../server/lobby.js';
+import { adminAllowed, gameStats } from '../server/admin.js';
 
 const SAVE_DELAY_MS = 1500; // Speichern entprellen
 const CHECK_EVERY_MS = 60_000; // Takt für Verbindungsprüfung, solange jemand verbunden ist
@@ -16,7 +17,7 @@ const STALE_AFTER_MS = 3 * 60 * 1000; // so lange ohne „ping“ vom Browser �
 export default {
   async fetch(request, env) {
     const { pathname } = new URL(request.url);
-    if (pathname === '/ws' || pathname === '/health') {
+    if (pathname === '/ws' || pathname === '/health' || pathname.startsWith('/api/')) {
       return env.LOBBY.get(env.LOBBY.idFromName('lobby')).fetch(request);
     }
     return env.ASSETS.fetch(request);
@@ -55,6 +56,7 @@ export class Lobby extends DurableObject {
       botDelayScale: Number(env.BOT_DELAY_SCALE ?? 1),
       onSave: (room) => this.queueSave(room.code),
       onDelete: (code) => this.queueSave(code),
+      onGame: (r) => ctx.storage.sql.exec('INSERT OR REPLACE INTO games (id, started_at, data) VALUES (?, ?, ?)', r.id, r.startedAt, JSON.stringify(r)),
     });
 
     // Der Browser schickt regelmäßig „ping“; Cloudflare antwortet selbst, ohne das Objekt zu wecken.
@@ -62,6 +64,7 @@ export class Lobby extends DurableObject {
 
     const sql = ctx.storage.sql;
     sql.exec('CREATE TABLE IF NOT EXISTS rooms (code TEXT PRIMARY KEY, data TEXT NOT NULL)');
+    sql.exec('CREATE TABLE IF NOT EXISTS games (id TEXT PRIMARY KEY, started_at INTEGER NOT NULL, data TEXT NOT NULL)');
     for (const { code, data } of sql.exec('SELECT code, data FROM rooms')) {
       if (!this.lobby.restore(JSON.parse(data))) this.queueSave(code);
     }
@@ -78,9 +81,12 @@ export class Lobby extends DurableObject {
   }
 
   async fetch(request) {
-    if (new URL(request.url).pathname === '/health') {
+    const { pathname } = new URL(request.url);
+    if (pathname === '/health') {
       return Response.json({ ok: true, rooms: this.lobby.rooms.size, connections: this.ctx.getWebSockets().length });
     }
+    if (pathname === '/api/admin/games') return this.admin(request);
+    if (pathname.startsWith('/api/')) return new Response('Nicht gefunden', { status: 404 });
     if (request.headers.get('Upgrade') !== 'websocket') {
       return new Response('WebSocket erwartet', { status: 426 });
     }
@@ -89,6 +95,22 @@ export class Lobby extends DurableObject {
     this.conn(server).persist();
     await this.scheduleAlarm(CHECK_EVERY_MS);
     return new Response(null, { status: 101, webSocket: client });
+  }
+
+  // Statistik für die Admin-Seite: GET liefert alle Partien, DELETE löscht sie
+  admin(request) {
+    const headers = { 'Cache-Control': 'no-store' };
+    if (!adminAllowed(this.env.ADMIN_KEY, request.headers.get('X-Admin-Key'))) {
+      return Response.json({ error: 'Admin-Schlüssel fehlt oder ist falsch.' }, { status: 401, headers });
+    }
+    const sql = this.ctx.storage.sql;
+    if (request.method === 'DELETE') {
+      sql.exec('DELETE FROM games');
+      return Response.json({ ok: true }, { headers });
+    }
+    if (request.method !== 'GET') return new Response(null, { status: 405, headers });
+    const records = sql.exec('SELECT data FROM games').toArray().map((row) => JSON.parse(row.data));
+    return Response.json(gameStats(records, this.lobby.rooms), { headers });
   }
 
   webSocketMessage(ws, message) {

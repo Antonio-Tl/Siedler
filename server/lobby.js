@@ -21,14 +21,16 @@ const DISCARD_MAX_MS = 45_000; // Zeit zum Abwerfen nach einer 7 (höchstens so 
  * @param {number} [opts.botDelayScale] 0 = Bots ohne Pause (Tests)
  * @param {(room: any) => void} [opts.onSave] Raum hat sich geändert und sollte gespeichert werden
  * @param {(code: string) => void} [opts.onDelete] Raum wurde entfernt
+ * @param {(record: any) => void} [opts.onGame] Statistik-Eintrag einer Partie anlegen oder ersetzen (gleiche id)
  */
-export function createLobby({ botDelayScale = 1, onSave = () => {}, onDelete = () => {} } = {}) {
+export function createLobby({ botDelayScale = 1, onSave = () => {}, onDelete = () => {}, onGame = () => {} } = {}) {
   /** @type {Map<string, any>} */
   const rooms = new Map();
 
   function dropRoom(room) {
     clearTimeout(room.timer);
     clearTimeout(room.clockTimer);
+    if (room.game && room.gameId && !room.gameEndedAt) onGame({ ...gameRecord(room), abandonedAt: Date.now() });
     rooms.delete(room.code);
     onDelete(room.code);
   }
@@ -95,6 +97,10 @@ export function createLobby({ botDelayScale = 1, onSave = () => {}, onDelete = (
 
   function broadcast(room) {
     room.lastActive = Date.now();
+    if (room.game?.phase === 'ended' && room.gameId && !room.gameEndedAt) {
+      room.gameEndedAt = room.lastActive;
+      onGame(gameRecord(room));
+    }
     syncClock(room);
     const info = roomInfo(room);
     const clock = clockInfo(room);
@@ -322,6 +328,25 @@ export function createLobby({ botDelayScale = 1, onSave = () => {}, onDelete = (
     };
   }
 
+  // Eintrag für die Admin-Statistik (/admin) – bei Start, Sieg und Abbruch neu geschrieben
+  function gameRecord(room) {
+    const g = room.game;
+    const humans = new Set(room.seats.filter((s) => !s.isBot).map((s) => s.token)).size;
+    return {
+      id: room.gameId,
+      code: room.code,
+      startedAt: room.gameStartedAt,
+      endedAt: room.gameEndedAt || null,
+      lastActive: room.lastActive,
+      mode: room.hotseat ? 'hotseat' : humans > 1 ? 'online' : 'solo',
+      island: g.islandName,
+      vpToWin: g.vpToWin,
+      players: g.players.map((p) => ({ name: p.name, color: p.color, isBot: p.isBot })),
+      rounds: g.turn.round,
+      winner: g.winner,
+    };
+  }
+
   function startGame(room) {
     room.game = createGame({
       players: room.seats.map((s) => ({ name: s.name, color: s.color, isBot: s.isBot })),
@@ -330,7 +355,11 @@ export function createLobby({ botDelayScale = 1, onSave = () => {}, onDelete = (
     });
     room.lastLocal = undefined;
     room.clock = null;
+    room.gameStartedAt = Date.now();
+    room.gameEndedAt = null;
+    room.gameId = `${room.code}-${room.gameStartedAt.toString(36)}`;
     for (const s of room.seats) s.away = false;
+    onGame(gameRecord(room));
     broadcast(room);
     pump(room);
   }
@@ -590,6 +619,7 @@ export function createLobby({ botDelayScale = 1, onSave = () => {}, onDelete = (
         code: room.code, host: room.host, vpToWin: room.vpToWin, hotseat: room.hotseat, pace: room.pace,
         turnTime: room.turnTime || 0, clock: room.clock || null,
         lastActive: room.lastActive, createdAt: room.createdAt, lastLocal: room.lastLocal, game: room.game,
+        gameId: room.gameId, gameStartedAt: room.gameStartedAt, gameEndedAt: room.gameEndedAt,
         seats: room.seats.map(({ token, name, color, isBot, left, away, disconnectedAt }) => ({ token, name, color, isBot, left, away, disconnectedAt })),
       };
     },
