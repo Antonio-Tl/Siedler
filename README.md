@@ -2,7 +2,7 @@
 
 Ein liebevoll gestalteter 3D-Nachbau des Brettspiel-Klassikers rund ums Siedeln, Handeln und Bauen – mit Online-Multiplayer, Hot-Seat, KI-Gegnern, Kamerafahrten und einer Hologramm-Bauvorschau. Läuft komplett lokal auf deinem Rechner, Mitspieler verbinden sich einfach über den Browser.
 
-![Die Insel mit Hologramm-Bauvorschau](docs/screenshots/brag.mp4)
+![Die Insel mit Hologramm-Bauvorschau](docs/screenshots/spiel.jpg)
 
 ---
 
@@ -10,11 +10,11 @@ Ein liebevoll gestalteter 3D-Nachbau des Brettspiel-Klassikers rund ums Siedeln,
 
 **Voraussetzung:** [Node.js](https://nodejs.org) ab Version 18 (die „LTS“-Version herunterladen und installieren).
 
-| System | So startest du das Spiel |
-| --- | --- |
-| **macOS** | Doppelklick auf **`start.command`** |
-| **Windows** | Doppelklick auf **`start.bat`** |
-| **Linux** | Im Terminal: `./start.command` |
+| System      | So startest du das Spiel            |
+| ----------- | ----------------------------------- |
+| **macOS**   | Doppelklick auf **`start.command`** |
+| **Windows** | Doppelklick auf **`start.bat`**     |
+| **Linux**   | Im Terminal: `./start.command`      |
 
 Die Startdatei erledigt alles automatisch:
 
@@ -38,6 +38,7 @@ npm start
 ```
 
 Danach <http://localhost:5274> im Browser öffnen.
+
 </details>
 
 ---
@@ -50,7 +51,7 @@ Danach <http://localhost:5274> im Browser öffnen.
 - **Mit Freunden** – Raum erstellen und den Einladungslink oder den 5-stelligen Code teilen. Freie Plätze füllt der Gastgeber auf Wunsch mit KI-Siedlern.
 - **An einem Gerät (Hot-Seat)** – 2–4 Spieler reichen den Bildschirm reihum weiter. Zwischen den Zügen erscheint ein Vorhang, damit niemand fremde Karten sieht.
 
-Jede Partie wird **automatisch gespeichert** – auch über einen Neustart hinweg. Im Hauptmenü findest du *„Weiterspielen“*, *„Gespeicherte Partien“*, das Regelbuch, die Einstellungen und unter *„Erweiterungen“* eine Vorschau auf kommende Inhalte (5–6 Spieler, Seefahrer, Städte & Ritter, Händler & Barbaren, Entdecker & Piraten – noch *coming soon*).
+Jede Partie wird **automatisch gespeichert** – auch über einen Neustart hinweg. Im Hauptmenü findest du _„Weiterspielen“_, _„Gespeicherte Partien“_, das Regelbuch, die Einstellungen und unter _„Erweiterungen“_ eine Vorschau auf kommende Inhalte (5–6 Spieler, Seefahrer, Städte & Ritter, Händler & Barbaren, Entdecker & Piraten – noch _coming soon_).
 
 ### Mit Freunden spielen
 
@@ -71,7 +72,7 @@ npx wrangler login   # einmalig: mit dem Cloudflare-Konto verbinden
 npm run cf:deploy    # hochladen – danach unter https://siedlungen.<dein-name>.workers.dev erreichbar
 ```
 
-Alternativ im Cloudflare-Dashboard unter *Workers & Pages → Erstellen → Repository importieren* dieses Git-Repository verbinden; dann wird bei jedem Push automatisch neu veröffentlicht. Zum lokalen Ausprobieren der Cloudflare-Version: `npm run cf:dev` (Port 8787).
+Alternativ im Cloudflare-Dashboard unter _Workers & Pages → Erstellen → Repository importieren_ dieses Git-Repository verbinden; dann wird bei jedem Push automatisch neu veröffentlicht. Zum lokalen Ausprobieren der Cloudflare-Version: `npm run cf:dev` (Port 8787).
 
 ---
 
@@ -92,15 +93,15 @@ Alternativ im Cloudflare-Dashboard unter *Workers & Pages → Erstellen → Repo
 
 ### Steuerung
 
-| Aktion | Maus / Tastatur |
-| --- | --- |
-| Kamera drehen | Ziehen mit der linken Maustaste |
-| Zoomen | Mausrad oder Zoom-Regler |
-| Schwenken | `W` `A` `S` `D`, Leertaste + Ziehen oder rechte Maustaste |
-| Würfeln | `R` |
-| Handelstisch | `T` |
-| Zug beenden | `E` |
-| Abbrechen / Schließen | `Esc` |
+| Aktion                | Maus / Tastatur                                           |
+| --------------------- | --------------------------------------------------------- |
+| Kamera drehen         | Ziehen mit der linken Maustaste                           |
+| Zoomen                | Mausrad oder Zoom-Regler                                  |
+| Schwenken             | `W` `A` `S` `D`, Leertaste + Ziehen oder rechte Maustaste |
+| Würfeln               | `R`                                                       |
+| Handelstisch          | `T`                                                       |
+| Zug beenden           | `E`                                                       |
+| Abbrechen / Schließen | `Esc`                                                     |
 
 ### Einstellungen („An deinem Tisch“ ⚙)
 
@@ -137,18 +138,18 @@ npm run cf:dev     # Cloudflare-Version lokal (Wrangler, Port 8787)
 npm run cf:deploy  # Cloudflare-Version veröffentlichen
 ```
 
-| Umgebungsvariable | Bedeutung | Standard |
-| --- | --- | --- |
-| `PORT` | Port des Servers | `5274` |
-| `DATA_DIR` | Ordner für die Spielstände (`rooms.json`) und die Statistik (`games.json`) | `./data` |
-| `PERSIST` | `0` schaltet das Speichern ab | an |
-| `ADMIN_KEY` | Schlüssel für die Admin-Seite `/admin` – ohne ist sie nur versteckt, nicht geschützt | – |
+| Umgebungsvariable | Bedeutung                                                                            | Standard |
+| ----------------- | ------------------------------------------------------------------------------------ | -------- |
+| `PORT`            | Port des Servers                                                                     | `5274`   |
+| `DATA_DIR`        | Ordner für die Spielstände (`rooms.json`) und die Statistik (`games.json`)           | `./data` |
+| `PERSIST`         | `0` schaltet das Speichern ab                                                        | an       |
+| `ADMIN_KEY`       | Schlüssel für die Admin-Seite `/admin` – ohne ist sie nur versteckt, nicht geschützt | –        |
 
 Beispiel: `PORT=8080 ./start.command` bzw. unter Windows `set PORT=8080` und danach `start.bat`.
 
 ### Admin-Seite (`/admin`)
 
-Unter **`/admin`** (z. B. <http://localhost:5274/admin>) liegt das *Partienbuch* – eine nirgends verlinkte Übersicht, wie viele Partien wann gespielt wurden: Kennzahlen, Partien pro Tag/Woche nach Spielmodus, Wochentag × Uhrzeit, Spielmodi, Siedler pro Partie und eine Liste aller Partien mit Insel, Spielern, Dauer und Ausgang. Über **„Statistik löschen“** wird die Statistik geleert; gespeicherte Partien der Spieler bleiben dabei erhalten.
+Unter **`/admin`** (z. B. <http://localhost:5274/admin>) liegt das _Partienbuch_ – eine nirgends verlinkte Übersicht, wie viele Partien wann gespielt wurden: Kennzahlen, Partien pro Tag/Woche nach Spielmodus, Wochentag × Uhrzeit, Spielmodi, Siedler pro Partie und eine Liste aller Partien mit Insel, Spielern, Dauer und Ausgang. Über **„Statistik löschen“** wird die Statistik geleert; gespeicherte Partien der Spieler bleiben dabei erhalten.
 
 Erfasst wird jede Partie beim Start, beim Sieg und wenn sie abgebrochen wird. Ist `ADMIN_KEY` gesetzt, fragt die Seite einmal pro Browser-Sitzung nach diesem Schlüssel:
 
@@ -159,22 +160,22 @@ npx wrangler secret put ADMIN_KEY             # Cloudflare (lokal mit „wrangle
 
 ### Aufbau
 
-| Pfad | Inhalt |
-| --- | --- |
-| `start.command` / `start.bat` | Startdateien für macOS/Linux bzw. Windows |
-| `shared/engine.js` | Regel-Engine – läuft identisch auf Server und Client |
-| `server/lobby.js` | Räume, Lobby, Hot-Seat, Wiederverbinden, Bot-Takt – gemeinsam für Node und Cloudflare |
-| `server/index.js` | Node-Server: Express + WebSocket, Speicherstände in `data/rooms.json`, Statistik in `data/games.json` |
-| `server/admin.js` | Admin-Statistik: Schlüsselprüfung und Status der Partien – gemeinsam für Node und Cloudflare |
-| `worker/index.js` | Cloudflare-Version: Worker + Durable Object (Speicherstände und Statistik in dessen SQLite-Datenbank) |
-| `wrangler.jsonc`, `scripts/build-cloudflare.js` | Cloudflare-Konfiguration und Build der statischen Dateien nach `dist/` |
-| `server/bot.js` | KI-Siedler |
-| `client/app.js` | Oberfläche, Menü, Dialoge, Handel, Tour, Kamerafahrten |
-| `client/board3d.js` | Three.js-Szene: Kamera, Figuren, Hologramme, Würfel, Effekte |
-| `client/three/` | Texturen, handgemalte Gelände mit Normal-Maps (`terrain.js`), 3D-Modelle (Figuren, Räuber, Deko, Häfen) und Wasser |
-| `client/admin/` | Admin-Seite `/admin` (Partienbuch) |
-| `client/art.js`, `client/art/` | SVG-Grafiken: Rohstoffe, Porträts (`portraits.js`), Linien-Icons (`icons.js`), farbige Motive (`emblems.js`) und große Illustrationen (`scenes.js`) |
-| `test/` | automatisierte Tests |
+| Pfad                                            | Inhalt                                                                                                                                              |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `start.command` / `start.bat`                   | Startdateien für macOS/Linux bzw. Windows                                                                                                           |
+| `shared/engine.js`                              | Regel-Engine – läuft identisch auf Server und Client                                                                                                |
+| `server/lobby.js`                               | Räume, Lobby, Hot-Seat, Wiederverbinden, Bot-Takt – gemeinsam für Node und Cloudflare                                                               |
+| `server/index.js`                               | Node-Server: Express + WebSocket, Speicherstände in `data/rooms.json`, Statistik in `data/games.json`                                               |
+| `server/admin.js`                               | Admin-Statistik: Schlüsselprüfung und Status der Partien – gemeinsam für Node und Cloudflare                                                        |
+| `worker/index.js`                               | Cloudflare-Version: Worker + Durable Object (Speicherstände und Statistik in dessen SQLite-Datenbank)                                               |
+| `wrangler.jsonc`, `scripts/build-cloudflare.js` | Cloudflare-Konfiguration und Build der statischen Dateien nach `dist/`                                                                              |
+| `server/bot.js`                                 | KI-Siedler                                                                                                                                          |
+| `client/app.js`                                 | Oberfläche, Menü, Dialoge, Handel, Tour, Kamerafahrten                                                                                              |
+| `client/board3d.js`                             | Three.js-Szene: Kamera, Figuren, Hologramme, Würfel, Effekte                                                                                        |
+| `client/three/`                                 | Texturen, handgemalte Gelände mit Normal-Maps (`terrain.js`), 3D-Modelle (Figuren, Räuber, Deko, Häfen) und Wasser                                  |
+| `client/admin/`                                 | Admin-Seite `/admin` (Partienbuch)                                                                                                                  |
+| `client/art.js`, `client/art/`                  | SVG-Grafiken: Rohstoffe, Porträts (`portraits.js`), Linien-Icons (`icons.js`), farbige Motive (`emblems.js`) und große Illustrationen (`scenes.js`) |
+| `test/`                                         | automatisierte Tests                                                                                                                                |
 
 Der Server ist autoritativ: Alle Spielzüge werden dort geprüft, jeder Spieler bekommt nur seine eigenen Handkarten zu sehen.
 
@@ -182,13 +183,13 @@ Der Server ist autoritativ: Alle Spielzüge werden dort geprüft, jeder Spieler 
 
 ## ❓ Probleme?
 
-| Problem | Lösung |
-| --- | --- |
-| „Node.js wurde nicht gefunden“ | Node.js von <https://nodejs.org> installieren und die Startdatei erneut öffnen. |
-| „Port schon belegt“ | Ein anderes Programm nutzt Port 5274 – mit `PORT=8080 ./start.command` einen anderen Port wählen. |
-| Mitspieler kommen nicht rein | Gleiches WLAN? Firewall-Abfrage beim Start erlaubt? Für Internet-Spiele Port freigeben oder Tunnel nutzen. |
-| Spiel ruckelt | Unter ⚙ die Grafikqualität auf „Hoch“, „Mittel“ oder „Niedrig“ stellen und ggf. die bewegte Szenerie abschalten. |
+| Problem                        | Lösung                                                                                                           |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| „Node.js wurde nicht gefunden“ | Node.js von <https://nodejs.org> installieren und die Startdatei erneut öffnen.                                  |
+| „Port schon belegt“            | Ein anderes Programm nutzt Port 5274 – mit `PORT=8080 ./start.command` einen anderen Port wählen.                |
+| Mitspieler kommen nicht rein   | Gleiches WLAN? Firewall-Abfrage beim Start erlaubt? Für Internet-Spiele Port freigeben oder Tunnel nutzen.       |
+| Spiel ruckelt                  | Unter ⚙ die Grafikqualität auf „Hoch“, „Mittel“ oder „Niedrig“ stellen und ggf. die bewegte Szenerie abschalten. |
 
 ---
 
-*Ein nicht-kommerzielles Fanprojekt. Nicht verbunden mit den Rechteinhabern des Originalspiels.*
+_Ein nicht-kommerzielles Fanprojekt. Nicht verbunden mit den Rechteinhabern des Originalspiels._
