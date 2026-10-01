@@ -2,7 +2,7 @@
 
 Ein liebevoll gestalteter 3D-Nachbau des Brettspiel-Klassikers rund ums Siedeln, Handeln und Bauen – mit Online-Multiplayer, Hot-Seat, KI-Gegnern, Kamerafahrten und einer Hologramm-Bauvorschau. Läuft komplett lokal auf deinem Rechner, Mitspieler verbinden sich einfach über den Browser.
 
-![Die Insel mit Hologramm-Bauvorschau](docs/screenshots/spiel.jpg)
+![Die Insel mit Hologramm-Bauvorschau](docs/screenshots/brag.mp4)
 
 ---
 
