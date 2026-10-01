@@ -945,7 +945,10 @@ function onPick(kind, id, piece) {
   if (piece === 'road' || (kind === 'edge' && !piece)) act(setup ? 'placeRoad' : 'buildRoad', { edge: id });
   else if (piece === 'settlement' || (kind === 'vertex' && !piece && setup)) act(setup ? 'placeSettlement' : 'buildSettlement', { vertex: id });
   else if (piece === 'city') act('buildCity', { vertex: id });
-  else if (kind === 'hex') {
+  else if (kind === 'hexBlocked') {
+    toast(id === st.robber ? 'Der Räuber steht schon hier – wähle ein anderes Feld.' : 'Dieses Feld kannst du gerade nicht wählen.');
+    return;
+  } else if (kind === 'hex') {
     const cands = stealCandidates(st, id, S.you);
     if (cands.length <= 1) act('moveRobber', { hex: id, victim: cands[0] });
     else openStealChooser(id, cands);
@@ -981,6 +984,9 @@ function showTooltip(info) {
     const free = st.phase === 'setup' || st.turn.freeRoads > 0;
     html = `<h4>${iconArt('road', 22)} Straße</h4><div class="sub">${free ? 'Kostenlos' : 'Verbindet deine Siedlungen'}</div>
       <div class="foot build-foot">Klicken zum Bauen${free ? '' : ` · ${costArt(COSTS.road, 14)}`}</div>`;
+  } else if (info.kind === 'hexBlocked') {
+    const h = st.board.hexes[info.id];
+    html = `<h4>${TERRAIN_LABEL[h.terrain]}${h.number ? ` · ${h.number}` : ''}</h4><div class="foot">${info.id === st.robber ? 'Der Räuber steht schon hier. Er muss auf ein anderes Feld ziehen.' : 'Dieses Feld kannst du gerade nicht wählen.'}</div>`;
   } else if (info.kind === 'hex') {
     const h = st.board.hexes[info.id];
     const cands = stealCandidates(st, info.id, S.you);

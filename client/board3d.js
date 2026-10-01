@@ -291,6 +291,9 @@ export class Board3D {
     rockGeo.translate(0, TOP - 0.36, 0);
     const slabGeo = new THREE.CylinderGeometry(0.95, 0.97, SLAB, 6);
     slabGeo.translate(0, TOP + SLAB / 2, 0);
+    // Die Unterseite liegt auf dem Fels: Gruppe entfernen statt sie ohne Material zu lassen –
+    // sonst bricht die Klick-Erkennung (Raycast) an der materiallosen Gruppe ab
+    slabGeo.groups = slabGeo.groups.filter((g) => g.materialIndex < 2);
     const rimGeo = hexRimGeometry();
     const rimMat = new THREE.MeshStandardMaterial({ color: '#ecdcaf', roughness: 0.42, metalness: 0.15 });
     const glowGeo = new THREE.CircleGeometry(0.93, 6, Math.PI / 2);
@@ -311,7 +314,6 @@ export class Board3D {
       const tint = new THREE.Color('#ffffff').offsetHSL(0, 0, ((h.id * 37) % 11 - 5) * 0.008);
       const top = new THREE.MeshStandardMaterial({ color, roughness: 0.9 });
       top.userData = { terrain: h.terrain, tint };
-      // Die Unterseite liegt auf dem Fels und bekommt kein Material (spart einen Draw-Call je Feld)
       const slab = new THREE.Mesh(slabGeo, [
         sideMats[h.terrain] ||= new THREE.MeshStandardMaterial({ color: shade(color, -0.3), roughness: 0.9 }),
         top,
@@ -840,9 +842,11 @@ export class Board3D {
       if (h) return { ...h.object.userData };
     }
     if (this.targets.kind === 'hex') {
-      const hits = this.raycaster.intersectObjects(this.hexTiles, false);
-      const h = hits.find((x) => this.targets.ids.has(x.object.userData.id));
-      return h ? { kind: 'hex', id: h.object.userData.id } : null;
+      // Das vorderste getroffene Feld zählt; ist es kein Ziel (z. B. das Feld des Räubers), wird es als gesperrt gemeldet
+      const h = this.raycaster.intersectObjects(this.hexTiles, false)[0];
+      if (!h) return null;
+      const id = h.object.userData.id;
+      return { kind: this.targets.ids.has(id) ? 'hex' : 'hexBlocked', id };
     }
     return null;
   }
@@ -851,7 +855,7 @@ export class Board3D {
     const key = hit ? `${hit.kind}:${hit.id}:${hit.piece || ''}` : null;
     if (key !== this.hoveredKey) {
       this.hoveredKey = key;
-      this.renderer.domElement.style.cursor = hit ? 'pointer' : '';
+      this.renderer.domElement.style.cursor = hit ? (hit.kind === 'hexBlocked' ? 'not-allowed' : 'pointer') : '';
       for (const g of this.targetGroup.children) g.userData.hover = !!hit && g.userData.id === hit.id && g.userData.kind === hit.kind;
       for (const g of this.ghostGroup.children) {
         if (g.userData.mat) g.userData.mat.uniforms.uHover.value = hit && g.userData.id === hit.id && g.userData.piece === hit.piece ? 1 : 0;
