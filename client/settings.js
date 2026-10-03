@@ -19,6 +19,7 @@ const DEFAULTS = {
   scenery: true, // bewegtes Wasser, Boote, Wolken
   holograms: true, // Bauvorschau auf dem Brett
   boardToasts: true, // Hinweise unten auf dem Brett (Würfel, Erträge, Handel)
+  autoFullscreen: true, // Handy: beim Start einer Partie ins Vollbild wechseln (wo der Browser es erlaubt)
 };
 
 let current = { ...DEFAULTS };

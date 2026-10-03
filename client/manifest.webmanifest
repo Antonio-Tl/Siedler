@@ -1,0 +1,17 @@
+{
+  "name": "Siedlungen – das Inselspiel",
+  "short_name": "Siedlungen",
+  "description": "3D-Inselspiel mit Online-Multiplayer, Hot-Seat und KI-Gegnern.",
+  "lang": "de",
+  "start_url": "/",
+  "scope": "/",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "any",
+  "background_color": "#140e09",
+  "theme_color": "#1d140d",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

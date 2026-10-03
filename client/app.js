@@ -28,6 +28,36 @@ const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Kompakte Ansicht (Handy): Die Klassen setzt das kleine Skript im <head> von index.html
+const ROOT = document.documentElement;
+const TOUCH = !!window.matchMedia?.('(pointer: coarse)').matches;
+const isCompact = () => ROOT.classList.contains('ui-compact');
+// Erstes Element, das gerade wirklich zu sehen ist (z. B. Bauknopf auf dem Rechner, Aktionsleiste auf dem Handy)
+const shown = (...els) => els.find((el) => el && el.getClientRects().length) || null;
+
+// Vollbild: auf Android & Rechnern per Knopf (und beim Spielstart), auf dem iPhone nur über „Zum Home-Bildschirm“
+const FS = {
+  supported: !!(document.fullscreenEnabled || document.webkitFullscreenEnabled),
+  active: () => !!(document.fullscreenElement || document.webkitFullscreenElement),
+  standalone: () => !!(window.matchMedia?.('(display-mode: fullscreen), (display-mode: standalone)').matches || navigator.standalone),
+};
+const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+function toggleFullscreen(on = !FS.active()) {
+  try {
+    const el = document.documentElement;
+    const p = on
+      ? (el.requestFullscreen ? el.requestFullscreen({ navigationUI: 'hide' }) : el.webkitRequestFullscreen?.())
+      : (document.exitFullscreen ? document.exitFullscreen() : document.webkitExitFullscreen?.());
+    p?.catch?.(() => {});
+  } catch { /* ignorieren */ }
+}
+
+// Beim Start einer Partie auf dem Handy automatisch mehr Platz schaffen (braucht einen Klick als Auslöser)
+function autoFullscreen() {
+  if (FS.supported && TOUCH && isCompact() && settings.autoFullscreen && !FS.active() && !FS.standalone()) toggleFullscreen(true);
+}
+
 const store = {
   get(k) { try { return localStorage.getItem(`siedlungen.${k}`); } catch { return null; } },
   set(k, v) { try { if (v === null) localStorage.removeItem(`siedlungen.${k}`); else localStorage.setItem(`siedlungen.${k}`, v); } catch { /* ignorieren */ } },
@@ -63,6 +93,8 @@ const S = {
   pops: [],
   cineToken: 0,
   shownSeat: undefined,
+  buildOpen: false, // kompakte Ansicht: Bauleiste offen
+  logOpen: false, // kompakte Ansicht: Chronik & Chat offen
 };
 window.__siedlungen = S; // für Debugging in der Konsole
 
@@ -203,7 +235,7 @@ function onMessage(msg) {
       break;
     case 'chat':
       S.chat.push(msg);
-      if (!$('#chat').hidden) renderChat();
+      if (!$('#chat').hidden && (!isCompact() || S.logOpen)) renderChat();
       else { S.chatUnread++; renderChatBadge(); }
       if (msg.seat !== S.you) play('click');
       break;
@@ -222,6 +254,8 @@ function resetToMenu() {
   roomStore.set(null);
   history.replaceState(null, '', location.pathname);
   closeModal();
+  setBuildOpen(false);
+  setLogOpen(false);
   hideCurtain();
   stopTour();
   showDemo();
@@ -262,11 +296,23 @@ function frameMenuIsland() {
   if (!S.board || $('#menu-screen').hidden) return;
   const nav = $('.menu-nav').getBoundingClientRect();
   const stage = $('#menu-stage').getBoundingClientRect();
-  const wide = innerWidth > 900;
+  // In der kompakten Ansicht ist kein Platz zwischen Navigation und Bühne – die Insel liegt mittig dahinter
+  const wide = !isCompact();
   S.board.setViewShift(wide ? (nav.right + stage.left) / 2 - innerWidth / 2 : 0);
   S.board.setMenuMode(true, wide ? stage.left - nav.right : innerWidth);
 }
-window.addEventListener('resize', () => requestAnimationFrame(frameMenuIsland));
+let wasLandscape = innerWidth > innerHeight;
+window.addEventListener('resize', () => {
+  // Gerät gedreht: Insel neu einpassen, offene Bauleiste schließen
+  const land = innerWidth > innerHeight;
+  if (land !== wasLandscape) {
+    wasLandscape = land;
+    S.board?.refit();
+    setBuildOpen(false);
+  }
+  S.board?.setViewPad(boardPad());
+  requestAnimationFrame(frameMenuIsland);
+});
 
 // Eine zufällig besiedelte Insel als lebendiger Hintergrund des Menüs
 function showDemo() {
@@ -338,7 +384,7 @@ function renderGames() {
         <button class="btn small ghost icon-btn" data-del="${g.code}" title="Aus der Liste entfernen">${icon('trash', 16)}</button>
       </div></li>`;
   }).join('');
-  $$('[data-join]', list).forEach((b) => b.addEventListener('click', () => send({ t: 'joinRoom', code: b.dataset.join })));
+  $$('[data-join]', list).forEach((b) => b.addEventListener('click', () => { autoFullscreen(); send({ t: 'joinRoom', code: b.dataset.join }); }));
   $$('[data-del]', list).forEach((b) => b.addEventListener('click', () => {
     if (confirm('Diese Partie aus deiner Liste entfernen? Du verlässt damit deinen Platz.')) send({ t: 'deleteGame', code: b.dataset.del });
   }));
@@ -507,6 +553,7 @@ function bindMenu() {
       const names = S.hsNames.map((n, i) => n.trim() || `Spieler ${i + 1}`);
       const bots = Number($('#hs-bots').value);
       if (names.length + bots < 2) { toast('Mindestens zwei Siedler.'); return; }
+      autoFullscreen();
       store.set('name', names[0]);
       send({ t: 'createRoom', hotseat: true, players: names, bots, vpToWin: Number($('#hs-vp').value), turnTime: Number($('#hs-time').value) });
       return;
@@ -518,6 +565,7 @@ function bindMenu() {
       return;
     }
     store.set('name', name);
+    autoFullscreen();
     if (m === 'ai') {
       send({ t: 'createRoom', name, solo: true, bots: Number($('#solo-bots').value), vpToWin: Number($('#solo-vp').value), pace: $('#solo-pace').value });
     } else {
@@ -532,7 +580,7 @@ function bindMenu() {
   });
   $('#btn-continue').addEventListener('click', () => {
     const last = S.games.find((g) => g.phase !== 'ended');
-    if (last) send({ t: 'joinRoom', code: last.code });
+    if (last) { autoFullscreen(); send({ t: 'joinRoom', code: last.code }); }
   });
   $$('#menu-nav [data-view]').forEach((b) => b.addEventListener('click', () => { play('page'); showMenu(b.dataset.view); }));
   $$('#menu-nav [data-action]').forEach((b) => b.addEventListener('click', () => (b.dataset.action === 'rules' ? openRules(0) : openSettings())));
@@ -546,11 +594,16 @@ function bindMenu() {
   });
   $('#hs-time').value = '0';
   $('#room-time').addEventListener('change', () => send({ t: 'setOptions', turnTime: Number($('#room-time').value) }));
-  $('#btn-start').addEventListener('click', () => send({ t: 'start' }));
+  $('#btn-start').addEventListener('click', () => { autoFullscreen(); send({ t: 'start' }); });
   $('#btn-leave-room').addEventListener('click', () => send({ t: 'leave' }));
 }
 
 // ---------- Spielansicht ----------
+
+// Kompakte Ansicht: Die Statuszeile liegt oben auf dem Brett – die Insel wird darunter eingepasst
+function boardPad() {
+  return isCompact() ? 66 : 0;
+}
 
 function ensureBoard() {
   if (S.board) return;
@@ -560,6 +613,7 @@ function ensureBoard() {
     quality: settings.quality,
     scenery: settings.scenery,
   });
+  S.board.setViewPad(boardPad());
   const slider = $('#zoom-slider');
   S.board.onCamera = () => {
     const z = S.board.getZoom();
@@ -652,7 +706,9 @@ function render() {
   chip.hidden = !S.room || S.room.hotseat;
   if (S.room) chip.textContent = `RAUM ${S.room.code}`;
   renderPlayers();
-  renderTurnCard();
+  const m = turnModel();
+  renderTurnCard(m);
+  renderCompact(m);
   renderChronicle();
   renderHand();
   renderDev();
@@ -666,6 +722,8 @@ function render() {
     if (isMyMainPhase()) S.redrawTrade();
     else closeModal();
   }
+  // Offene Blätter (Spieler, Entwicklungskarten) bleiben aktuell
+  if ((S.modalKey === 'players' || S.modalKey === 'dev') && S.redrawSheet) S.redrawSheet();
 }
 
 // ---------- Zugzeit ----------
@@ -703,9 +761,10 @@ function updateClocks() {
   const frac = c ? Math.min(1, left / c.total) : 0;
   const low = !!c && left <= 15_000;
   // Zug-Panel: wer ist dran und wie lange noch?
+  const humans = c && st && !S.demo && st.phase !== 'ended' ? c.actors.filter((i) => !st.players[i]?.isBot) : [];
+  $('#m-status').classList.toggle('timed', humans.length > 0);
   const box = $('#turn-clock');
   if (box) {
-    const humans = c && st && !S.demo && st.phase !== 'ended' ? c.actors.filter((i) => !st.players[i]?.isBot) : [];
     box.hidden = !humans.length;
     if (humans.length) {
       const mine = myClockRunning();
@@ -723,7 +782,7 @@ function updateClocks() {
   for (const el of $$('[data-clock]')) {
     if (el.dataset.clock === 'text') el.textContent = fmtClock(left);
     else el.style.transform = `scaleX(${frac})`;
-    el.closest('.ptimer, .turn-clock, .modal-clock')?.classList.toggle('low', low);
+    el.closest('.ptimer, .turn-clock, .modal-clock, .m-status')?.classList.toggle('low', low);
   }
   // Die letzten Sekunden des eigenen Zugs ticken hörbar
   const sec = Math.ceil(left / 1000);
@@ -786,9 +845,27 @@ function awardCelebration(ev, st) {
 }
 
 function renderPlayers() {
+  $('#player-list').innerHTML = playersHtml();
+  const st = S.state;
+  const lr = st.longestRoad;
+  const la = st.largestArmy;
+  $('#award-road').classList.toggle('held', lr.player !== null);
+  $('#award-road-sub').textContent = awardText('road');
+  $('#award-army').classList.toggle('held', la.player !== null);
+  $('#award-army-sub').textContent = awardText('army');
+}
+
+function awardText(kind) {
+  const st = S.state;
+  if (kind === 'road') return st.longestRoad.player !== null ? `${nameOf(st.longestRoad.player)} · ${st.longestRoad.length} Straßen` : '5 Straßen nötig';
+  return st.largestArmy.player !== null ? `${nameOf(st.largestArmy.player)} · ${st.largestArmy.size} Ritter` : '3 Ritter nötig';
+}
+
+// Spielerliste: links auf dem Rechner, als Leiste (Chips mit .pmini) in der kompakten Ansicht
+function playersHtml() {
   const st = S.state;
   const seats = S.room?.seats || [];
-  $('#player-list').innerHTML = st.players.map((p) => {
+  return st.players.map((p) => {
     const active = st.phase !== 'ended' && p.idx === st.current;
     const vp = p.vp ?? p.publicVP;
     const seat = seats[p.idx];
@@ -805,6 +882,7 @@ function renderPlayers() {
         <div class="pname">${esc(isMe && !S.room?.hotseat ? 'Du' : p.name)}${p.isBot ? '<small>KI</small>' : ''}</div>
         <div class="phouse">${esc(COLOR_LABEL[p.color] || '')}</div>
         <div class="pvp"><span class="crown">${icon('crown', 12)}</span> <b>${vp}</b> <span class="of">/ ${st.vpToWin}</span></div>
+        <div class="pmini"><span><span class="crown">${icon('crown', 11)}</span><b>${vp}</b></span><span><i class="mini-card"></i>${p.resourceCount}</span>${roadHolder ? `<span class="aw" title="Längste Handelsstraße">${icon('road', 12)}</span>` : ''}${armyHolder ? `<span class="aw" title="Größte Rittermacht">${icon('sword', 12)}</span>` : ''}</div>
       </div>
       <div class="pstats">
         <span title="Rohstoffkarten"><i class="mini-card"></i>${p.resourceCount} ${p.resourceCount === 1 ? 'Karte' : 'Karten'}</span>
@@ -819,26 +897,31 @@ function renderPlayers() {
       ${popsFor(p.idx)}
     </li>`;
   }).join('');
-  const lr = st.longestRoad;
-  const la = st.largestArmy;
-  $('#award-road').classList.toggle('held', lr.player !== null);
-  $('#award-road-sub').textContent = lr.player !== null ? `${nameOf(lr.player)} · ${lr.length} Straßen` : '5 Straßen nötig';
-  $('#award-army').classList.toggle('held', la.player !== null);
-  $('#award-army-sub').textContent = la.player !== null ? `${nameOf(la.player)} · ${la.size} Ritter` : '3 Ritter nötig';
 }
 
-function renderTurnCard() {
+function awardsHtml() {
+  const st = S.state;
+  return `<div class="award ${st.longestRoad.player !== null ? 'held' : ''}"><span class="award-art">${uiArt('awardRoad', 28)}</span><div><b>Längste Straße</b><small>${esc(awardText('road'))}</small></div></div>
+    <div class="award ${st.largestArmy.player !== null ? 'held' : ''}"><span class="award-art">${uiArt('awardArmy', 28)}</span><div><b>Größte Rittermacht</b><small>${esc(awardText('army'))}</small></div></div>`;
+}
+
+// Was ist gerade zu tun? Für das Zug-Panel (Rechner) und für Statuszeile & Aktionsleiste (Handy).
+// hint: kurze Anleitung für die Statuszeile · wait: Text der Hauptaktion, wenn gerade nichts zu klicken ist
+function turnModel() {
   const st = S.state;
   const mine = st.current === S.you;
   const cur = st.players[st.current];
-  const m = { who: '', status: `Zug ${Math.max(1, st.turn.number)}`, illus: 'hourglass', caption: '', title: '', desc: '', actions: [] };
-  m.who = mine ? (S.room?.hotseat ? `${esc(cur.name)} ist dran` : 'Dein Zug') : `${esc(cur.name)} ist am Zug`;
+  const curName = esc(cur.name);
+  const tap = TOUCH ? 'Tippe auf' : 'Wähle';
+  const m = { who: '', status: `Zug ${Math.max(1, st.turn.number)}`, illus: 'hourglass', caption: '', title: '', desc: '', actions: [], hint: '', wait: `${curName} ist dran` };
+  m.who = mine ? (S.room?.hotseat ? `${curName} ist dran` : 'Dein Zug') : `${curName} ist am Zug`;
 
   if (S.demo) {
     m.who = 'Willkommen';
     m.illus = 'island';
     m.title = 'Eine neue Insel wartet';
     m.desc = 'Wähle im Menü dein Abenteuer.';
+    m.hint = m.desc;
   } else if (st.phase === 'ended') {
     const w = st.players[st.winner];
     m.who = st.winner === S.you && !S.room?.hotseat ? 'Du hast gewonnen!' : `${esc(w.name)} gewinnt`;
@@ -846,6 +929,7 @@ function renderTurnCard() {
     m.caption = 'Das Spiel ist entschieden';
     m.title = 'Die Insel hat einen Meister';
     m.desc = `${esc(w.name)} erreicht ${w.vp} Siegpunkte.`;
+    m.hint = m.desc;
     m.actions.push({ label: `${icon('trophy', 17)} Ergebnis ansehen`, primary: true, fn: () => { S.autoModal = null; renderAutoModal(true); } });
   } else if (st.phase === 'setup') {
     m.status = 'Gründungsphase';
@@ -855,14 +939,19 @@ function renderTurnCard() {
       m.caption = second ? 'Zweite Siedlung' : 'Ein Ort zum Ankommen';
       m.title = second ? 'Noch ein Zuhause' : 'Baue deine erste Siedlung';
       m.desc = `Wähle eine leuchtende Kreuzung. Die angrenzenden Felder versorgen dich mit Rohstoffen.${second ? ' Diese Siedlung bringt sofort Starterträge.' : ''}`;
+      m.hint = `${tap} einen leuchtenden Platz für deine ${second ? 'zweite Siedlung – sie bringt sofort Starterträge' : 'erste Siedlung'}.`;
+      m.wait = 'Platz wählen';
     } else if (mine) {
       m.illus = 'road';
       m.caption = 'Gründungsphase';
       m.title = 'Ein Weg voller Möglichkeiten';
       m.desc = 'Wähle eine leuchtende Straße neben deiner neuen Siedlung.';
+      m.hint = `${tap} eine leuchtende Straße neben deiner neuen Siedlung.`;
+      m.wait = 'Straße wählen';
     } else {
       m.title = 'Ein Moment der Geduld';
-      m.desc = `${esc(cur.name)} sucht einen Platz für ${st.setup.step === 'settlement' ? 'eine Siedlung' : 'eine Straße'}.`;
+      m.desc = `${curName} sucht einen Platz für ${st.setup.step === 'settlement' ? 'eine Siedlung' : 'eine Straße'}.`;
+      m.hint = `Gründungsphase · ${m.desc}`;
     }
   } else if (st.turn.pending === 'discard') {
     m.illus = 'robber';
@@ -871,9 +960,12 @@ function renderTurnCard() {
     const need = st.turn.discards?.[S.you];
     if (need) {
       m.desc = `Du hast zu viele Karten. Wirf ${need} davon ab.`;
-      m.actions.push({ label: `Karten abwerfen (${need})`, primary: true, fn: () => { S.autoModal = null; renderAutoModal(true); } });
+      m.hint = `Der Räuber erwacht – wirf ${need} Karten ab.`;
+      m.actions.push({ label: `Karten abwerfen (${need})`, primary: true, go: true, fn: () => { S.autoModal = null; renderAutoModal(true); } });
     } else {
       m.desc = 'Alle mit mehr als 7 Karten werfen die Hälfte ab …';
+      m.hint = `Der Räuber erwacht · ${m.desc}`;
+      m.wait = 'Warten …';
     }
   } else if (mine) {
     const t = st.turn;
@@ -882,23 +974,30 @@ function renderTurnCard() {
       m.caption = 'Der ungebetene Gast der Insel';
       m.title = 'Versetze den Räuber';
       m.desc = 'Wähle ein anderes Landfeld. Stiehl eine zufällige Karte von einem benachbarten Gegner.';
+      m.hint = `${tap} ein Feld für den Räuber – du stiehlst eine Karte.`;
+      m.wait = 'Feld wählen';
     } else if (t.freeRoads > 0) {
       m.illus = 'road';
       m.caption = 'Straßenbau';
       m.title = 'Neue Wege';
       m.desc = `Baue noch ${t.freeRoads} kostenlose Straße${t.freeRoads > 1 ? 'n' : ''} – wähle ein leuchtendes Hologramm.`;
+      m.hint = `Noch ${t.freeRoads} kostenlose Straße${t.freeRoads > 1 ? 'n' : ''} – ${tap.toLowerCase()} ein leuchtendes Hologramm.`;
+      m.wait = 'Straße wählen';
     } else if (st.trade) {
       m.illus = 'trade';
       m.caption = 'Am Handelstisch';
       m.title = 'Ein Angebot liegt aus';
       const acc = Object.values(st.trade.responses).filter((r) => r === 'accepted').length;
       m.desc = acc ? `${acc === 1 ? 'Ein Mitspieler hat' : `${acc} Mitspieler haben`} zugesagt – wähle deinen Handelspartner.` : 'Dein Angebot liegt bei allen Mitspielern. Warte auf ihre Antworten.';
+      m.hint = acc ? 'Zusage erhalten – wähle deinen Handelspartner.' : 'Dein Angebot liegt aus – warte auf Antworten.';
+      m.wait = 'Handel läuft …';
     } else if (!t.rolled) {
       m.illus = 'dice';
       m.caption = 'Der Würfelwurf';
       m.title = 'Lass die Insel sprechen';
       m.desc = 'Würfle. Felder mit der gewürfelten Zahl versorgen alle angrenzenden Siedlungen.';
-      m.actions.push({ label: `${icon('dice', 17)} Würfeln`, primary: true, key: 'R', fn: () => act('roll') });
+      m.hint = 'Würfle – Felder mit dieser Zahl liefern Rohstoffe.';
+      m.actions.push({ label: `${icon('dice', 17)} Würfeln`, primary: true, go: true, key: 'R', fn: () => act('roll') });
     } else {
       m.illus = 'house';
       m.caption = 'Bauen & Handeln';
@@ -907,16 +1006,23 @@ function renderTurnCard() {
       m.desc = ghosts && settings.holograms
         ? `Handle für das, was dir fehlt. ${ghosts === 1 ? 'Ein möglicher Bau leuchtet' : `${ghosts} mögliche Bauten leuchten`} als Hologramm auf der Insel.`
         : 'Handle für das, was dir fehlt, verbinde deine Straßen und lass deine Siedlungen wachsen.';
+      m.hint = ghosts && settings.holograms
+        ? `Baue, handle oder beende den Zug · ${ghosts === 1 ? 'ein Bau leuchtet' : `${ghosts} Bauten leuchten`} auf der Insel.`
+        : 'Handle für das, was dir fehlt – oder beende deinen Zug.';
       m.actions.push({ label: `${icon('swap', 17)} Handeln`, key: 'T', fn: () => openTrade() });
       m.actions.push({ label: 'Zug beenden', primary: true, key: 'E', fn: () => { S.mode = null; act('endTurn'); } });
     }
   } else {
     m.title = 'Ein Moment der Geduld';
-    if (st.turn.pending === 'robber') m.desc = `${esc(cur.name)} versetzt den Räuber …`;
-    else if (st.trade) m.desc = `${esc(cur.name)} bietet allen einen Handel an.`;
-    else m.desc = `${esc(cur.name)} überlegt den nächsten Zug.`;
+    if (st.turn.pending === 'robber') m.desc = `${curName} versetzt den Räuber …`;
+    else if (st.trade) m.desc = `${curName} bietet allen einen Handel an.`;
+    else m.desc = `${curName} überlegt den nächsten Zug.`;
+    m.hint = m.desc;
   }
+  return m;
+}
 
+function renderTurnCard(m) {
   const key = JSON.stringify([m.who, m.status, m.illus, m.title, m.desc, m.actions.map((a) => a.label)]);
   if (key === S.turnCardKey) return;
   const illusChanged = !S.turnCardKey || JSON.parse(S.turnCardKey)[2] !== m.illus;
@@ -940,6 +1046,78 @@ function renderTurnCard() {
     card.classList.add('flip');
   }
   $$('[data-a]', card).forEach((b) => b.addEventListener('click', () => m.actions[Number(b.dataset.a)].fn()));
+}
+
+// ---------- Kompakte Ansicht: Statuszeile & Aktionsleiste ----------
+
+function renderCompact(m) {
+  const st = S.state;
+  const status = $('#m-status');
+  const cur = st.players[st.current];
+  const skey = JSON.stringify([m.who, m.hint, st.current, S.demo]);
+  if (status.dataset.key !== skey) {
+    status.dataset.key = skey;
+    status.innerHTML = S.demo ? '' : `<span class="ms-av">${avatar(cur, 30)}</span><div class="ms-text"><b>${m.who}</b><span>${m.hint}</span></div>
+      <b class="ms-clock" data-clock="text"></b><span class="bar"><i data-clock="bar"></i></span>`;
+  }
+  status.classList.toggle('mine', !S.demo && st.current === S.you && st.phase !== 'ended');
+
+  const primary = m.actions.find((a) => a.primary);
+  const main = isMyMainPhase();
+  const ready = main ? BUILDS.filter((b) => buildAvailable(b.kind)).length : 0;
+  if (!main && S.buildOpen) setBuildOpen(false);
+  S.barPrimary = primary ? primary.fn : null;
+  const bar = $('#m-bar');
+  const bkey = JSON.stringify([primary?.label, primary?.go, m.wait, main, ready]);
+  if (bar.dataset.key === bkey) return;
+  bar.dataset.key = bkey;
+  bar.innerHTML = `
+    <button class="m-btn ${ready ? 'ready' : ''} ${S.buildOpen ? 'active' : ''}" id="m-build" data-m="build" ${main ? '' : 'disabled'} title="Bauen">${icon('hammer', 20)}<span>Bauen</span>${ready ? `<i class="m-badge">${ready}</i>` : ''}</button>
+    <button class="m-btn" id="m-trade" data-m="trade" ${main ? '' : 'disabled'} title="Handeln">${icon('swap', 20)}<span>Handeln</span></button>
+    <button class="btn primary m-primary ${primary?.go ? 'go' : ''}" data-m="primary" ${primary ? '' : 'disabled'}>${primary ? primary.label : m.wait}</button>`;
+}
+
+function setBuildOpen(on) {
+  S.buildOpen = !!on;
+  $('#game-screen').classList.toggle('build-open', S.buildOpen);
+  $('#m-build')?.classList.toggle('active', S.buildOpen);
+  if (on) S.board?.clearSelection();
+}
+
+function setLogOpen(on) {
+  S.logOpen = !!on;
+  $('#game-screen').classList.toggle('log-open', S.logOpen);
+  $('#m-backdrop').hidden = !S.logOpen;
+  if (on && !$('#chat').hidden) { S.chatUnread = 0; renderChatBadge(); renderChat(); }
+}
+
+// Alle Siedler mit allen Details – in der kompakten Ansicht nach Tippen auf die Spielerleiste
+function openPlayersSheet() {
+  const draw = () => {
+    openModal('players', `<h2>Die Siedler</h2><ul class="player-sheet">${playersHtml()}</ul><div class="sheet-awards">${awardsHtml()}</div>`, { cls: 'wood-modal' });
+  };
+  draw();
+  S.redrawSheet = draw;
+}
+
+// Entwicklungskarten ansehen, ausspielen und kaufen
+function openDevSheet() {
+  const draw = () => {
+    const st = S.state;
+    const p = me();
+    if (!p || !p.devCards) { closeModal(); return; }
+    const cards = devCardsHtml(p, st);
+    const m = openModal('dev', `
+      <h2>${uiArt('devCard', 26)} Entwicklungskarten</h2>
+      ${cards ? `<div class="dev-sheet">${cards}</div>` : `<div class="dev-sheet-empty">${uiArt('devCard', 54)}<div><b>Noch keine Karten</b><small>Ritter, Fortschritt oder ein Siegpunkt – kaufe deine erste Karte.</small></div></div>`}
+      <p class="hint">Pro Zug darfst du eine Karte ausspielen, nicht im Zug des Kaufs. Einen Ritter auch vor dem Würfeln.</p>
+      <div class="dev-buy"><span class="hint">${st.devDeckCount} im Stapel · <span class="cost">${costArt(COSTS.dev, 18)}</span></span>
+        <button class="btn primary" id="dev-buy" ${buildAvailable('dev') ? '' : 'disabled'}>Karte kaufen</button></div>`);
+    $$('[data-dev]', m).forEach((b) => b.addEventListener('click', () => { closeModal(); playDevCard(b.dataset.dev); }));
+    $('#dev-buy', m).addEventListener('click', () => act('buyDev'));
+  };
+  draw();
+  S.redrawSheet = draw;
 }
 
 function renderChronicle() {
@@ -986,10 +1164,23 @@ function renderDev() {
   const el = $('#dev-panel');
   const st = S.state;
   const head = (n) => `<div class="dev-head">${uiArt('devCard', 16)} Entwicklungskarten <span class="count">${n}</span></div>`;
+  // Kompakte Ansicht: ein Knopf neben der Hand, leuchtet, wenn eine Karte spielbar ist
+  const md = $('#m-dev');
+  const count = p?.devCards?.length || 0;
+  md.classList.toggle('ready', !!p?.devCards && ['knight', 'roadBuilding', 'yearOfPlenty', 'monopoly'].some(devPlayable));
+  md.disabled = !p?.devCards;
+  md.innerHTML = `${uiArt('devCard', 28)}<span class="lbl">Karten</span>${count ? `<span class="cnt">${count}</span>` : ''}`;
   if (!p || !p.devCards) {
     el.innerHTML = `${head(st.devDeckCount)}<div class="dev-empty">Stapel: ${st.devDeckCount} Karten</div>`;
     return;
   }
+  const cards = devCardsHtml(p, st);
+  el.innerHTML = `${head(p.devCards.length)}
+    <div class="dev-list">${cards || `<div class="dev-intro"><span class="dev-illu">${uiArt('devCard', 54)}</span><div><b>Dein nächster Vorteil</b><small>Kaufe eine Karte, um zu beginnen · ${st.devDeckCount} im Stapel</small></div></div>`}</div>`;
+  $$('[data-dev]', el).forEach((b) => b.addEventListener('click', () => playDevCard(b.dataset.dev)));
+}
+
+function devCardsHtml(p, st) {
   const groups = {};
   for (const c of p.devCards) {
     groups[c.type] = groups[c.type] || { n: 0, fresh: 0 };
@@ -997,7 +1188,7 @@ function renderDev() {
     if (c.bought >= st.turn.number) groups[c.type].fresh++;
   }
   const order = ['knight', 'roadBuilding', 'yearOfPlenty', 'monopoly', 'vp'];
-  const cards = order.filter((t) => groups[t]).map((t) => {
+  return order.filter((t) => groups[t]).map((t) => {
     const g = groups[t];
     const can = devPlayable(t);
     return `<div class="dev-card ${can ? 'ready' : ''}" title="${esc(DEV_TEXT[t])}">
@@ -1007,9 +1198,6 @@ function renderDev() {
       <small>${t === 'vp' ? 'zählt automatisch' : g.fresh ? 'ab nächstem Zug' : 'bereit'}</small>
       ${t === 'vp' ? '' : `<button data-dev="${t}" ${can ? '' : 'disabled'}>Ausspielen</button>`}</div>`;
   }).join('');
-  el.innerHTML = `${head(p.devCards.length)}
-    <div class="dev-list">${cards || `<div class="dev-intro"><span class="dev-illu">${uiArt('devCard', 54)}</span><div><b>Dein nächster Vorteil</b><small>Kaufe eine Karte, um zu beginnen · ${st.devDeckCount} im Stapel</small></div></div>`}</div>`;
-  $$('[data-dev]', el).forEach((b) => b.addEventListener('click', () => playDevCard(b.dataset.dev)));
 }
 
 function playDevCard(card) {
@@ -1065,6 +1253,7 @@ function renderBuild() {
   }).join('');
   $$('[data-build]').forEach((btn) => btn.addEventListener('click', () => {
     const k = btn.dataset.build;
+    setBuildOpen(false);
     if (k === 'dev') { act('buyDev'); return; }
     S.mode = S.mode === k ? null : k;
     play('click');
@@ -1136,7 +1325,7 @@ function updateTargets() {
   el.hidden = !count;
   if (count) {
     const what = kind === 'hex' ? 'mögliche Felder' : kind === 'vertex' ? 'mögliche Plätze' : `mögliche${count === 1 ? 'r Bau' : ' Bauten'}`;
-    el.innerHTML = `${icon('sparkle', 13)} ${count} ${what}${S.mode ? ' · Esc zum Abbrechen' : ''}`;
+    el.innerHTML = `${icon('sparkle', 13)} ${count} ${what}${S.mode ? `<span class="pl-esc"> · Esc</span><button class="pl-cancel" data-cancel>${icon('close', 11)} Abbrechen</button>` : ''}`;
   }
 }
 
@@ -1176,17 +1365,20 @@ function showTooltip(info) {
   const tip = $('#tooltip');
   const st = S.state;
   if (!info || !st || S.demo) { tip.hidden = true; return; }
+  // Touch: Die Infos erscheinen als Leiste am Brettrand, gebaut wird erst nach Bestätigen (oder zweitem Tippen)
+  const touch = !!info.touch;
+  const buildHint = touch ? 'Kosten' : 'Klicken zum Bauen';
   let html = '';
   if (info.kind === 'vertex') {
     const isCity = info.piece === 'city';
     const who = me() ? `${esc(nameOf(S.you))} · ` : '';
     html = `<h4>${iconArt(isCity ? 'city' : 'settlement', 22)} ${isCity ? 'Stadtausbau' : 'Siedlungsplatz'}</h4>
-      <div class="sub">${who}${isCity ? 'Doppelter Ertrag nach dem Ausbau' : 'Rohstoffe nach dem Bauen'}</div>${siteRows(info.id, isCity)}
-      ${info.piece ? `<div class="foot build-foot">Klicken zum Bauen · ${costArt(isCity ? COSTS.city : COSTS.settlement, 14)}</div>` : '<div class="foot">Zu jeder Siedlung bleibt mindestens eine Kreuzung frei.</div>'}`;
+      <div class="sub">${who}${isCity ? 'Doppelter Ertrag nach dem Ausbau' : 'Rohstoffe nach dem Bauen'}</div><div class="trows">${siteRows(info.id, isCity)}</div>
+      ${info.piece ? `<div class="foot build-foot">${buildHint} · ${costArt(isCity ? COSTS.city : COSTS.settlement, 14)}</div>` : '<div class="foot hint-free">Zu jeder Siedlung bleibt mindestens eine Kreuzung frei.</div>'}`;
   } else if (info.kind === 'edge') {
     const free = st.phase === 'setup' || st.turn.freeRoads > 0;
     html = `<h4>${iconArt('road', 22)} Straße</h4><div class="sub">${free ? 'Kostenlos' : 'Verbindet deine Siedlungen'}</div>
-      <div class="foot build-foot">Klicken zum Bauen${free ? '' : ` · ${costArt(COSTS.road, 14)}`}</div>`;
+      ${free && touch ? '' : `<div class="foot build-foot">${buildHint}${free ? '' : ` · ${costArt(COSTS.road, 14)}`}</div>`}`;
   } else if (info.kind === 'hexBlocked') {
     const h = st.board.hexes[info.id];
     html = `<h4>${TERRAIN_LABEL[h.terrain]}${h.number ? ` · ${h.number}` : ''}</h4><div class="foot">${info.id === st.robber ? 'Der Räuber steht schon hier. Er muss auf ein anderes Feld ziehen.' : 'Dieses Feld kannst du gerade nicht wählen.'}</div>`;
@@ -1196,8 +1388,23 @@ function showTooltip(info) {
     html = `<h4>${emblem('robber', 24)} Räuber hierher</h4><div class="sub">${TERRAIN_LABEL[h.terrain]}${h.number ? ` · Zahl ${h.number}` : ''}</div>
       <div class="foot">${cands.length ? `Stehlen möglich bei: ${cands.map((c) => esc(st.players[c].name)).join(', ')}` : 'Hier kannst du niemanden bestehlen.'}</div>`;
   }
+  if (touch) {
+    const label = info.kind === 'hex' ? 'Räuber hierher' : info.kind === 'edge' ? 'Straße bauen' : info.piece === 'city' ? 'Zur Stadt ausbauen' : info.piece ? 'Siedlung bauen' : 'Hier siedeln';
+    html += `<div class="tip-actions">${info.kind === 'hexBlocked'
+      ? '<button class="btn" data-tip="cancel">OK</button>'
+      : `<button class="btn ghost" data-tip="cancel">Abbrechen</button><button class="btn primary" data-tip="ok">${icon('check', 16)} ${label}</button>`}</div>`;
+  }
   tip.innerHTML = html;
   tip.hidden = false;
+  tip.classList.toggle('docked', touch);
+  if (touch) {
+    // Liegt das gewählte Ziel unten auf dem Brett, erscheint die Leiste oben – sonst würde sie es verdecken
+    tip.classList.toggle('at-top', info.y > $('#board-wrap').clientHeight * 0.55);
+    tip.style.left = '';
+    tip.style.top = '';
+    $$('[data-tip]', tip).forEach((b) => b.addEventListener('click', () => (b.dataset.tip === 'ok' ? S.board.confirmSelection() : S.board.clearSelection())));
+    return;
+  }
   const wrap = $('#board-wrap').getBoundingClientRect();
   const x = Math.min(info.x + 18, wrap.width - 250);
   const y = Math.min(info.y + 12, wrap.height - tip.offsetHeight - 10);
@@ -1394,7 +1601,7 @@ function handleEvent(ev, st) {
     case 'buyDev':
       play('card');
       if (mine(ev.player) && ev.card) {
-        flyArt(devArt(ev.card, 44), elCenter($('[data-build="dev"]')), $('#dev-panel'), 0);
+        flyArt(devArt(ev.card, 44), elCenter(shown($('[data-build="dev"]'), $('#dev-buy'), $('#m-build'))), shown($('#dev-panel'), $('#m-dev')), 0);
         boardToast({ iconHtml: devArt(ev.card, 30), title: `Neue Karte: ${DEV_LABEL[ev.card]}`, text: DEV_TEXT[ev.card] });
       }
       break;
@@ -1607,19 +1814,27 @@ function hideCurtain() {
 
 // ---------- Modals ----------
 
-function openModal(key, html, { wide = false, closable = true, onClose } = {}) {
+function openModal(key, html, { wide = false, closable = true, onClose, cls = '' } = {}) {
   const root = $('#modal-root');
   const base = (k) => String(k || '').split(':').slice(0, 2).join(':');
   const still = S.modalKey && key && base(S.modalKey) === base(key);
-  root.innerHTML = `<div class="modal-backdrop ${still ? 'still' : ''}"><div class="modal parchment ${wide ? 'wide' : ''} ${still ? 'still' : ''}" role="dialog" aria-modal="true">
+  // Beim Neuzeichnen desselben Dialogs die Scrollposition behalten (wichtig für Blätter auf dem Handy)
+  const scroll = still ? $('.modal-body', root)?.scrollTop || 0 : 0;
+  root.innerHTML = `<div class="modal-backdrop ${still ? 'still' : ''}"><div class="modal parchment ${wide ? 'wide' : ''} ${cls} ${still ? 'still' : ''}" role="dialog" aria-modal="true">
     <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
     ${closable ? `<button class="modal-close" aria-label="Schließen">${icon('close', 16)}</button>` : ''}<div class="modal-body">${html}</div></div></div>`;
   S.modalKey = key;
   S.modalOnClose = onClose;
+  if (scroll) $('.modal-body', root).scrollTop = scroll;
   const close = () => { closeModal(); if (onClose) onClose(); };
   if (closable) {
     $('.modal-close', root).addEventListener('click', close);
-    $('.modal-backdrop', root).addEventListener('mousedown', (e) => { if (e.target === e.currentTarget) close(); });
+    // Nur ein vollständiger Klick bzw. Tipp neben den Dialog schließt ihn – sonst landet der Tipp
+    // nach dem Schließen auf dem Element darunter (z. B. einer Handkarte)
+    const bd = $('.modal-backdrop', root);
+    let downOutside = false;
+    bd.addEventListener('pointerdown', (e) => { downOutside = e.target === bd; });
+    bd.addEventListener('click', (e) => { if (downOutside && e.target === bd) close(); });
   }
   return $('.modal', root);
 }
@@ -1629,6 +1844,7 @@ function closeModal() {
   S.modalKey = null;
   S.autoModal = null;
   S.redrawTrade = null;
+  S.redrawSheet = null;
 }
 
 function desiredAutoModal() {
@@ -1832,7 +2048,7 @@ function tradeExchange({ bank, p, st, ratios, T }) {
       ${n ? `<span class="tx-badge minus">−${n}</span>` : ''}
       <span class="tx-art">${resourceArt(r, 46)}</span>
       <b class="tx-name">${RES_LABEL[r]}</b>
-      <span class="tx-have">Auf der Hand <b>${have}</b></span>
+      <span class="tx-have"><span class="lg">Auf der Hand</span><span class="sh">Hand</span> <b>${have}</b></span>
       ${off ? `<span class="tx-why">${have ? `Brauchst ${step}` : 'Keine Karte'}</span>` : stepper('give', r, n, canPlus)}
     </div>`;
   }).join('');
@@ -1846,7 +2062,7 @@ function tradeExchange({ bank, p, st, ratios, T }) {
       ${n ? `<span class="tx-badge plus">+${n}</span>` : ''}
       <span class="tx-art">${resourceArt(r, 46)}</span>
       <b class="tx-name">${RES_LABEL[r]}</b>
-      <span class="tx-have">${bank ? `In der Bank <b>${st.bank[r]}</b>` : 'Von Mitspielern'}</span>
+      <span class="tx-have">${bank ? `<span class="lg">In der Bank</span><span class="sh">Bank</span> <b>${st.bank[r]}</b>` : '<span class="lg">Von Mitspielern</span><span class="sh">Mitspieler</span>'}</span>
       ${off ? `<span class="tx-why">${blocked ? 'Gibst du ab' : 'Bank ist leer'}</span>` : stepper('get', r, n, canPlus)}
     </div>`;
   }).join('');
@@ -1939,7 +2155,7 @@ function openTrade({ give: preset = null } = {}) {
       <div class="modal-actions">
         <button class="btn ghost" id="tr-reset">Zurücksetzen</button>
         <button class="btn primary" id="tr-submit" ${valid ? '' : 'disabled'}>${bank ? 'Mit der Bank tauschen' : 'Angebot an alle senden'}</button>
-      </div>`, { wide: true });
+      </div>`, { wide: true, cls: 'trade-modal' });
     $$('[data-partner]', m).forEach((b) => b.addEventListener('click', () => {
       T.partner = b.dataset.partner;
       S.lastTradePartner = T.partner;
@@ -2135,6 +2351,7 @@ function openSettings() {
           <select id="set-quality"><option value="ultra">Ultra – feinste Texturen, weiche Schatten & Tiefe</option><option value="high">Hoch – Schatten & volle Details</option><option value="medium">Mittel</option><option value="low">Niedrig – für schwächere Geräte</option></select></label>
         ${toggleHtml('set-holo', settings.holograms, 'Bauvorschau als Hologramme')}
         ${toggleHtml('set-toasts', settings.boardToasts, 'Hinweise unten auf dem Brett (Würfel, Erträge, Handel)')}
+        ${FS.supported && TOUCH ? toggleHtml('set-autofs', settings.autoFullscreen, 'Vollbild beim Spielstart (Handy)') : ''}
       </section>
       <section><h3>${emblem('bell', 28)} Der Klang</h3><p class="hint">Würfel, Pergament, Holz, Stein und warme Glocken.</p>
         ${toggleHtml('set-sound', settings.sound, 'Klang an')}
@@ -2167,6 +2384,7 @@ function openSettings() {
     settings.boardToasts = e.target.checked;
     if (!e.target.checked) $('#toasts').innerHTML = '';
   });
+  $('#set-autofs', m)?.addEventListener('change', (e) => { settings.autoFullscreen = e.target.checked; });
   $('#set-sound', m).addEventListener('change', (e) => { settings.sound = e.target.checked; updateSoundBtn(); });
   $('#set-amb', m).addEventListener('change', (e) => { settings.ambience = e.target.checked; });
   $('#set-volume', m).addEventListener('input', (e) => { settings.volume = Number(e.target.value) / 100; $('#vol-val', m).textContent = `${e.target.value}%`; });
@@ -2289,19 +2507,32 @@ function stopTour() {
 function openGameMenu() {
   const inRoom = !!S.room;
   const solo = S.room && (S.room.hotseat || S.room.seats.filter((s) => !s.isBot).length <= 1);
+  // In der kompakten Ansicht fehlt die obere Leiste – Ton, Häfen und Kamerafahrten stehen deshalb hier
+  const compact = isCompact();
+  const harbors = $('#toggle-harbors').classList.contains('active');
+  const onOff = (on) => `<span class="tag">${on ? 'an' : 'aus'}</span>`;
   const m = openModal('menu', `
     <h2 class="modal-title">Menü</h2>
     ${inRoom && !S.room.hotseat ? `<p>Raumcode: <b class="code">${S.room.code}</b> – teile den Link, damit andere zuschauen oder beitreten können.</p>` : ''}
     <div class="menu-list">
       ${inRoom && !S.room.hotseat ? `<button class="btn" id="m-copy">${icon('link', 17)} Einladungslink kopieren</button>` : ''}
+      ${FS.supported && !FS.standalone() ? `<button class="btn" id="m-fs">${icon(FS.active() ? 'shrink' : 'expand', 17)} ${FS.active() ? 'Vollbild beenden' : 'Vollbild'}</button>` : ''}
+      ${compact ? `<button class="btn" id="m-sound">${uiArt(isSoundOn() ? 'soundOn' : 'soundOff', 17)} Klang ${onOff(isSoundOn())}</button>
+      <button class="btn" id="m-harbors">${icon('anchor', 17)} Hafen-Schilder ${onOff(harbors)}</button>
+      <button class="btn" id="m-cine">${icon('camera', 17)} Kamerafahrten ${onOff(settings.cinematic)}</button>` : ''}
       <button class="btn" id="m-tour">${icon('compass', 17)} Inseltour starten</button>
       <button class="btn" id="m-rules">${icon('book', 17)} Regelbuch</button>
       <button class="btn" id="m-settings">${icon('cog', 17)} An deinem Tisch (Einstellungen)</button>
       <button class="btn ${solo ? '' : 'danger'}" id="m-leave">${solo ? `${icon('chest', 17)} Speichern & zum Hauptmenü` : `${icon('leave', 17)} Partie verlassen (KI übernimmt)`}</button>
     </div>
-    <h3>Tastenkürzel</h3>
-    <p class="hint">R Würfeln · E Zug beenden · T Handeln · Esc Abbrechen · WASD Kamera schwenken · Leertaste + Ziehen schwenken</p>`);
+    ${TOUCH ? `<h3>Steuerung</h3>
+    <p class="hint">Ein Finger verschiebt die Insel · zwei Finger zoomen und drehen · Tippen wählt einen Platz aus, Bestätigen (oder nochmal Tippen) baut · Tippen auf eine Handkarte öffnet den Handel</p>` : `<h3>Tastenkürzel</h3>
+    <p class="hint">R Würfeln · E Zug beenden · T Handeln · Esc Abbrechen · WASD Kamera schwenken · Leertaste + Ziehen schwenken</p>`}`);
   $('#m-copy', m)?.addEventListener('click', copyInvite);
+  $('#m-fs', m)?.addEventListener('click', () => { toggleFullscreen(); closeModal(); });
+  $('#m-sound', m)?.addEventListener('click', () => { toggleSound(); updateSoundBtn(); openGameMenu(); });
+  $('#m-harbors', m)?.addEventListener('click', () => { $('#toggle-harbors').click(); openGameMenu(); });
+  $('#m-cine', m)?.addEventListener('click', () => { settings.cinematic = !settings.cinematic; openGameMenu(); });
   $('#m-tour', m).addEventListener('click', () => { closeModal(); startTour(); });
   $('#m-rules', m).addEventListener('click', () => openRules(0));
   $('#m-settings', m).addEventListener('click', () => openSettings());
@@ -2338,9 +2569,55 @@ function renderChat() {
 }
 
 function renderChatBadge() {
-  const b = $('#chat-badge');
-  b.hidden = !S.chatUnread;
-  b.textContent = String(S.chatUnread);
+  for (const b of [$('#chat-badge'), $('#m-log-badge')]) {
+    b.hidden = !S.chatUnread;
+    b.textContent = String(S.chatUnread);
+  }
+}
+
+function updateFullBtn() {
+  const b = $('#m-full');
+  b.hidden = !FS.supported || FS.standalone();
+  b.innerHTML = icon(FS.active() ? 'shrink' : 'expand', 19);
+  b.title = FS.active() ? 'Vollbild beenden' : 'Vollbild';
+}
+
+// Kompakte Ansicht: Werkzeuge am Brett, Aktionsleiste, Blätter
+function bindCompact() {
+  $('#m-menu').addEventListener('click', () => (S.demo ? showMenu('home') : openGameMenu()));
+  $('#m-log').addEventListener('click', () => { play('page'); setLogOpen(!S.logOpen); });
+  $('#log-close').addEventListener('click', () => setLogOpen(false));
+  $('#m-backdrop').addEventListener('click', () => setLogOpen(false));
+  $('#m-reset').addEventListener('click', () => S.board?.resetView());
+  $('#m-full').addEventListener('click', () => toggleFullscreen());
+  $('#m-dev').addEventListener('click', () => { if (me()?.devCards) { play('page'); setBuildOpen(false); openDevSheet(); } });
+  $('#player-list').addEventListener('click', () => { if (isCompact() && S.state && !S.demo) { play('page'); openPlayersSheet(); } });
+  $('#m-bar').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-m]');
+    if (!b || b.disabled) return;
+    if (b.dataset.m === 'build') { play('click'); setBuildOpen(!S.buildOpen); return; }
+    setBuildOpen(false);
+    if (b.dataset.m === 'trade') openTrade();
+    else if (S.barPrimary) S.barPrimary();
+  });
+  // Wer aufs Brett tippt, will dort etwas tun – die Bauleiste macht Platz
+  $('#board-canvas').addEventListener('pointerdown', () => { if (S.buildOpen) setBuildOpen(false); });
+  $('#placements').addEventListener('click', (e) => {
+    if (!e.target.closest('[data-cancel]')) return;
+    S.mode = null;
+    play('click');
+    render();
+  });
+  for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, updateFullBtn);
+  updateFullBtn();
+  // iPhone kennt kein Vollbild für Webseiten – einmalig zeigen, wie es über den Home-Bildschirm geht
+  if (IOS && TOUCH && !FS.supported && !FS.standalone() && isCompact() && !store.get('homeHint')) {
+    store.set('homeHint', '1');
+    setTimeout(() => notice({
+      art: 'island', title: 'Tipp: Spielen ohne Browserleisten', duration: 12000, sound: null,
+      text: 'Tippe in Safari auf „Teilen“ und dann „Zum Home-Bildschirm“ – so startet Siedlungen im Vollbild.',
+    }), 1500);
+  }
 }
 
 function bindGame() {
@@ -2370,6 +2647,8 @@ function bindGame() {
     const k = e.key.toLowerCase();
     if (k === 'escape') {
       if (S.tour) { stopTour(); return; }
+      if (S.logOpen && !S.modalKey) { setLogOpen(false); return; }
+      if (S.buildOpen) { setBuildOpen(false); return; }
       if (S.modalKey && !['discard', 'incoming', 'offer', 'accepted'].some((x) => (S.modalKey || '').startsWith(x))) {
         const cb = S.modalOnClose;
         closeModal();
@@ -2390,6 +2669,7 @@ function bindGame() {
 fillArt();
 bindMenu();
 bindGame();
+bindCompact();
 showDemo();
 showMenu('home');
 resolveToken().then((token) => {

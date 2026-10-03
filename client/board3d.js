@@ -86,6 +86,8 @@ export class Board3D {
     controls.minPolarAngle = 0.02;
     controls.screenSpacePanning = false;
     controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+    // Touch wie bei Karten-Apps: ein Finger verschiebt die Insel, zwei Finger zoomen und drehen
+    controls.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE };
     controls.addEventListener('start', () => {
       this.userMoved = true;
       this.cancelCamera();
@@ -764,6 +766,8 @@ export class Board3D {
     const key = `${color}|${list.map((g) => `${g.piece}:${g.id}`).sort().join(',')}`;
     if (key === this.ghostKey || !this.board) return;
     this.ghostKey = key;
+    // Ein per Touch ausgewähltes Hologramm verschwindet mit den alten Hologrammen
+    if (this.selected?.piece) this.clearSelection();
     this.hoverGhost = null;
     this.disposeGroup(this.ghostGroup);
     this.hoveredKey = undefined;
@@ -792,22 +796,33 @@ export class Board3D {
   bindEvents() {
     const el = this.renderer.domElement;
     let down = null;
+    // Mehrere Finger gleichzeitig (Zoomen, Drehen) sind nie ein Tippen
+    const fingers = new Set();
+    let multi = false;
     el.addEventListener('pointerdown', (e) => {
-      down = { x: e.clientX, y: e.clientY };
+      fingers.add(e.pointerId);
+      if (fingers.size > 1) multi = true;
+      else { multi = false; down = { x: e.clientX, y: e.clientY }; }
     });
+    el.addEventListener('pointercancel', (e) => { fingers.delete(e.pointerId); down = null; });
     el.addEventListener('pointerup', (e) => {
+      fingers.delete(e.pointerId);
+      if (multi) { down = null; return; }
       if (!down || e.button !== 0 || this.panMode) return;
-      if (Math.hypot(e.clientX - down.x, e.clientY - down.y) < 6) {
-        const hit = this.pick(e);
-        if (hit) this.onPick(hit.kind, hit.id, hit.piece);
+      const touch = e.pointerType === 'touch';
+      if (Math.hypot(e.clientX - down.x, e.clientY - down.y) < (touch ? 12 : 6)) {
+        const hit = this.pick(e, touch);
+        if (touch) this.tap(hit, e);
+        else if (hit) this.onPick(hit.kind, hit.id, hit.piece);
       }
       down = null;
     });
     el.addEventListener('pointermove', (e) => {
-      if (e.buttons) return;
+      if (e.buttons || e.pointerType === 'touch') return;
       this.setHover(this.pick(e), e);
     });
-    el.addEventListener('pointerleave', () => this.setHover(null));
+    // Nach dem Tippen meldet der Browser „pointerleave“ – die Auswahl soll dabei stehen bleiben
+    el.addEventListener('pointerleave', (e) => { if (e.pointerType !== 'touch') this.setHover(null); });
     el.addEventListener('wheel', () => { this.userMoved = true; this.cancelCamera(); }, { passive: true });
     el.addEventListener('contextmenu', (e) => e.preventDefault());
     window.addEventListener('keydown', (e) => {
@@ -831,7 +846,8 @@ export class Board3D {
     window.addEventListener('blur', () => this.keys.clear());
   }
 
-  pick(e) {
+  // touch: verfehlt der Finger knapp, zählt das nächstgelegene Ziel auf dem Bildschirm
+  pick(e, touch = false) {
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.pointer.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
     this.raycaster.setFromCamera(this.pointer, this.camera);
@@ -840,6 +856,10 @@ export class Board3D {
       const hits = this.raycaster.intersectObjects(objs, true);
       const h = hits.find((x) => x.object.userData.kind);
       if (h) return { ...h.object.userData };
+      if (touch) {
+        const near = this.nearestTarget(objs, e.clientX - rect.left, e.clientY - rect.top, rect, 36);
+        if (near) return near;
+      }
     }
     if (this.targets.kind === 'hex') {
       // Das vorderste getroffene Feld zählt; ist es kein Ziel (z. B. das Feld des Räubers), wird es als gesperrt gemeldet
@@ -851,7 +871,49 @@ export class Board3D {
     return null;
   }
 
-  setHover(hit, e) {
+  // Kreuzungen und Straßen sind auf dem Handy nur wenige Pixel groß: das nächste Ziel im Umkreis gewinnt
+  nearestTarget(objs, x, y, rect, radius) {
+    let best = null;
+    let bestD = radius;
+    const p = new THREE.Vector3();
+    for (const g of objs) {
+      const d = g.userData;
+      if (!d.kind || d.kind === 'hex') continue;
+      p.copy(g.position);
+      p.y += 0.05;
+      p.project(this.camera);
+      if (p.z > 1) continue;
+      const dist = Math.hypot((p.x * 0.5 + 0.5) * rect.width - x, (-p.y * 0.5 + 0.5) * rect.height - y);
+      if (dist < bestD) {
+        bestD = dist;
+        best = { kind: d.kind, id: d.id, piece: d.piece };
+      }
+    }
+    return best;
+  }
+
+  // Touch: Das erste Tippen wählt aus (Vorschau und Infos), ein zweites Tippen auf dasselbe Ziel bestätigt
+  tap(hit, e) {
+    const key = hit ? `${hit.kind}:${hit.id}:${hit.piece || ''}` : null;
+    const selectable = hit && hit.kind !== 'hexBlocked';
+    if (selectable && key === this.selectedKey) { this.confirmSelection(); return; }
+    this.setHover(hit, e, true);
+    this.selected = selectable ? hit : null;
+    this.selectedKey = selectable ? key : null;
+  }
+
+  confirmSelection() {
+    const hit = this.selected;
+    this.clearSelection();
+    if (hit) this.onPick(hit.kind, hit.id, hit.piece);
+  }
+
+  clearSelection() {
+    this.setHover(null);
+  }
+
+  setHover(hit, e, touch = false) {
+    if (!hit) { this.selected = null; this.selectedKey = null; }
     const key = hit ? `${hit.kind}:${hit.id}:${hit.piece || ''}` : null;
     if (key !== this.hoveredKey) {
       this.hoveredKey = key;
@@ -874,7 +936,7 @@ export class Board3D {
     }
     if (hit && e) {
       const rect = this.renderer.domElement.getBoundingClientRect();
-      this.onHover({ ...hit, x: e.clientX - rect.left, y: e.clientY - rect.top });
+      this.onHover({ ...hit, x: e.clientX - rect.left, y: e.clientY - rect.top, touch });
     } else if (!hit) {
       this.onHover(null);
     }
@@ -924,6 +986,7 @@ export class Board3D {
   setMenuMode(on, freeWidth = 0) {
     const before = this.menuMode ? this.menuDist() : 0;
     this.menuMode = on;
+    this.applyViewShift(); // im Menü gibt es keinen verdeckten oberen Rand
     this.menuFree = freeWidth || this.menuFree || 0;
     const after = on ? this.menuDist() : 0;
     // Die Kamerasteuerung darf so weit zurück, sonst würde sie die Menü-Ansicht wieder heranziehen;
@@ -1042,6 +1105,11 @@ export class Board3D {
     this.flyTo(this.baseViewSpec(), 700);
   }
 
+  // Nach dem Drehen des Geräts passt die Kamera die Insel beim nächsten resize() neu ein
+  refit() {
+    this.userMoved = false;
+  }
+
   setPanMode(on) {
     this.panMode = on;
     this.controls.mouseButtons.LEFT = on ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
@@ -1055,8 +1123,17 @@ export class Board3D {
 
   applyViewShift() {
     const { clientWidth: w, clientHeight: h } = this.container;
-    if (this.viewShift && w && h) this.camera.setViewOffset(w, h, -this.viewShift, 0, w, h);
+    // Oben verdeckter Rand (z. B. Statuszeile auf dem Handy): Bild um die Hälfte nach unten rücken
+    const dy = this.menuMode ? 0 : Math.min(this.viewPad || 0, h * 0.4) / 2;
+    if ((this.viewShift || dy) && w && h) this.camera.setViewOffset(w, h, -(this.viewShift || 0), -dy, w, h);
     else this.camera.clearViewOffset();
+  }
+
+  // Pixel am oberen Brettrand, die von Bedienelementen verdeckt sind – die Insel wird darunter eingepasst
+  setViewPad(px = 0) {
+    if ((this.viewPad || 0) === px) return;
+    this.viewPad = px;
+    this.resize();
   }
 
   // Langsame Umrundung, z. B. als Hintergrund des Startmenüs
@@ -1094,11 +1171,14 @@ export class Board3D {
     this.camera.updateProjectionMatrix();
     this.applyViewShift();
     const halfH = Math.atan(Math.tan((this.camera.fov * Math.PI) / 360) * aspect);
-    const dist = Math.max(11.8, 5.6 / Math.tan(halfH));
+    const halfV = (this.camera.fov * Math.PI) / 360;
+    // Mit verdecktem oberen Rand (kompakte Ansicht) muss die Insel auch in der Höhe ganz in den freien Teil passen
+    const pad = this.menuMode ? 0 : Math.min(this.viewPad || 0, h * 0.4);
+    const free = (h - pad) / h;
+    const dist = Math.max(11.8, 5.6 / Math.tan(halfH), pad ? 4.7 / (Math.tan(halfV) * free) : 0);
     this.homeDist = dist;
     // Draufsicht: ganze Insel samt Häfen in Höhe und Breite
-    const halfV = (this.camera.fov * Math.PI) / 360;
-    this.topDist = Math.max(5.9 / Math.tan(halfV), 6.1 / Math.tan(halfH));
+    this.topDist = Math.max(5.9 / (Math.tan(halfV) * free), 6.1 / Math.tan(halfH));
     // Etwas steiler als früher: Chips und Figuren bleiben aus der Grundansicht gut lesbar
     const dir = new THREE.Vector3(0, 8.9, 5.7).normalize();
     this.homePos = dir.multiplyScalar(dist).add(this.homeTarget);
@@ -1186,6 +1266,17 @@ export class Board3D {
     }
     if (this.robber) this.robber.rotation.y = Math.sin(time * 0.6) * 0.35;
     for (const l of this.harborLabels || []) l.quaternion.copy(this.camera.quaternion);
+
+    // Beim Verschieben die Insel nicht aus den Augen verlieren
+    const tgt = this.controls.target;
+    const far = Math.hypot(tgt.x, tgt.z);
+    if (far > 7 && !this.camAnim && !this.menuMode) {
+      const k = 7 / far - 1;
+      this.camera.position.x += tgt.x * k;
+      this.camera.position.z += tgt.z * k;
+      tgt.x += tgt.x * k;
+      tgt.z += tgt.z * k;
+    }
 
     this.controls.update();
     // Nebel wandert mit der Kamera mit, damit die Insel auch aus der Ferne klar bleibt

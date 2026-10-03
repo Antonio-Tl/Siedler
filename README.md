@@ -93,15 +93,26 @@ Alternativ im Cloudflare-Dashboard unter _Workers & Pages → Erstellen → Repo
 
 ### Steuerung
 
-| Aktion                | Maus / Tastatur                                           |
-| --------------------- | --------------------------------------------------------- |
-| Kamera drehen         | Ziehen mit der linken Maustaste                           |
-| Zoomen                | Mausrad oder Zoom-Regler                                  |
-| Schwenken             | `W` `A` `S` `D`, Leertaste + Ziehen oder rechte Maustaste |
-| Würfeln               | `R`                                                       |
-| Handelstisch          | `T`                                                       |
-| Zug beenden           | `E`                                                       |
-| Abbrechen / Schließen | `Esc`                                                     |
+| Aktion                | Maus / Tastatur                                           | Handy / Tablet                                       |
+| --------------------- | --------------------------------------------------------- | ---------------------------------------------------- |
+| Kamera drehen         | Ziehen mit der linken Maustaste                           | Mit zwei Fingern ziehen                              |
+| Zoomen                | Mausrad oder Zoom-Regler                                  | Mit zwei Fingern auf- und zuziehen                   |
+| Schwenken             | `W` `A` `S` `D`, Leertaste + Ziehen oder rechte Maustaste | Mit einem Finger ziehen                              |
+| Bauen                 | Klick auf ein Hologramm                                   | Antippen (zeigt Infos), dann bestätigen oder nochmal antippen |
+| Würfeln               | `R`                                                       | Großer Knopf unten rechts                            |
+| Handelstisch          | `T`                                                       | **Handeln** oder eine Handkarte antippen             |
+| Zug beenden           | `E`                                                       | Großer Knopf unten rechts                            |
+| Abbrechen / Schließen | `Esc`                                                     | **Abbrechen** bzw. neben das Fenster tippen          |
+
+### 📱 Auf dem Handy
+
+Auf Handys und in kleinen Fenstern stellt sich die Oberfläche automatisch um. Alles passt auf einen Bildschirm, gescrollt wird nichts:
+
+- **Hochformat** (empfohlen, einhändig): oben die Spielerleiste, darunter das Brett mit einer Statuszeile („Dein Zug – würfle …“, Zugzeit), unten die Handkarten und die Aktionsleiste mit **Bauen**, **Handeln** und dem großen Knopf für den nächsten Schritt (Würfeln, Zug beenden, Karten abwerfen …).
+- **Querformat**: Spieler und Handkarten links, das Brett in der Mitte, rechts die Bauknöpfe, **Handeln** und der große Knopf. Das Handy muss nicht gedreht werden – beide Richtungen funktionieren.
+- **Antippen statt Danebentippen:** Kreuzungen und Straßen sind auf dem Handy klein. Ein Tipp in die Nähe wählt den nächsten Platz aus und zeigt, welche Felder er bringt. Gebaut wird erst nach **Bestätigen** oder einem zweiten Tipp.
+- **Chronik & Chat** öffnen sich über das Schriftrollen-Symbol am Brett, **Entwicklungskarten** über die Karte neben der Hand, alle Details der Mitspieler per Tipp auf die Spielerleiste. Dialoge wie der Handelstisch erscheinen als Blatt vom unteren Rand.
+- **Vollbild:** Auf Android wechselt das Spiel beim Start einer Partie ins Vollbild (abschaltbar unter ⚙). Der Knopf am Brett und das Menü schalten es um. Auf dem iPhone gibt es für Webseiten kein Vollbild: Dort in Safari auf _Teilen → Zum Home-Bildschirm_ tippen, dann startet Siedlungen ohne Browserleisten wie eine App.
 
 ### Einstellungen („An deinem Tisch“ ⚙)
 
@@ -170,7 +181,8 @@ npx wrangler secret put ADMIN_KEY             # Cloudflare (lokal mit „wrangle
 | `worker/index.js`                               | Cloudflare-Version: Worker + Durable Object (Speicherstände und Statistik in dessen SQLite-Datenbank)                                               |
 | `wrangler.jsonc`, `scripts/build-cloudflare.js` | Cloudflare-Konfiguration und Build der statischen Dateien nach `dist/`                                                                              |
 | `server/bot.js`                                 | KI-Siedler                                                                                                                                          |
-| `client/app.js`                                 | Oberfläche, Menü, Dialoge, Handel, Tour, Kamerafahrten                                                                                              |
+| `client/app.js`                                 | Oberfläche, Menü, Dialoge, Handel, Tour, Kamerafahrten, kompakte Handy-Ansicht (Aktionsleiste, Blätter, Vollbild)                                    |
+| `client/manifest.webmanifest`, `client/icons/`  | Web-App-Manifest und Symbole – „Zum Home-Bildschirm“ startet das Spiel im Vollbild                                                                  |
 | `client/board3d.js`                             | Three.js-Szene: Kamera, Figuren, Hologramme, Würfel, Effekte                                                                                        |
 | `client/three/`                                 | Texturen, handgemalte Gelände mit Normal-Maps (`terrain.js`), 3D-Modelle (Figuren, Räuber, Deko, Häfen) und Wasser                                  |
 | `client/admin/`                                 | Admin-Seite `/admin` (Partienbuch)                                                                                                                  |

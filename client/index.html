@@ -5,6 +5,29 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Siedlungen</title>
   <meta name="description" content="Siedlungen – ein 3D-Inselspiel mit Online-Multiplayer, Hot-Seat und Bots." />
+  <meta name="theme-color" content="#1d140d" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Siedlungen" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+  <script>
+    // Kompakte Ansicht für Handys und kleine Fenster – vor dem ersten Zeichnen setzen, damit nichts springt.
+    // Hochformat: Brett oben, Hand und Aktionsleiste unten. Querformat: Spieler links, Brett mittig, Aktionen rechts.
+    (function () {
+      var root = document.documentElement;
+      function apply() {
+        var w = window.innerWidth, h = window.innerHeight, land = w > h;
+        var compact = land ? h <= 560 || w <= 900 : w <= 900;
+        root.classList.toggle('ui-compact', compact);
+        root.classList.toggle('ui-portrait', compact && !land);
+        root.classList.toggle('ui-landscape', compact && land);
+      }
+      apply();
+      window.addEventListener('resize', apply);
+    })();
+  </script>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M32 3 L57 11 V30 C57 46 45 56 32 61 C19 56 7 46 7 30 V11 Z' fill='%23962c1c' stroke='%23d9b265' stroke-width='4'/%3E%3Cpath d='M23 44 V28 H41 V44 Z M21 22 h5 v7 h-5z M29.5 22 h5 v7 h-5z M38 22 h5 v7 h-5z' fill='%23e6c57c'/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -58,6 +81,7 @@
             <button class="chip-btn" id="island-tour"><span data-icon="compass:14"></span> Inseltour</button>
             <button class="chip-btn" id="cam-toggle" title="Kamerafahrten an/aus"><span data-icon="camera:14"></span> Kamerafahrten</button>
           </div>
+          <div class="m-status" id="m-status" aria-live="polite"></div>
           <div class="placements" id="placements" hidden></div>
           <div class="board-hint">Ziehen zum Drehen · Scrollen zum Zoomen · WASD / Leertaste + Ziehen zum Schwenken</div>
           <div class="round-info" id="round-info"></div>
@@ -68,7 +92,8 @@
           <div class="tour-panel parchment" id="tour-panel" hidden></div>
         </section>
 
-        <aside class="turn-panel parchment ornate">
+        <aside class="turn-panel parchment ornate" id="turn-panel">
+          <button class="sheet-close" id="log-close" aria-label="Schließen"><span data-icon="close:16"></span></button>
           <div class="turn-card" id="turn-card"></div>
           <div class="log-tabs section-head">
             <button class="log-tab active" data-tab="log">Chronik</button>
@@ -84,9 +109,21 @@
 
       <footer class="handbar">
         <div class="res-cards" id="res-cards"></div>
+        <button class="m-dev" id="m-dev" title="Entwicklungskarten"></button>
         <div class="dev-panel ornate" id="dev-panel"></div>
         <div class="build-buttons" id="build-buttons"></div>
       </footer>
+
+      <!-- Nur in der kompakten Ansicht (Handy): Werkzeuge am Brett und Aktionsleiste -->
+      <div class="m-tools" id="m-tools">
+        <button class="m-tool" id="m-menu" title="Menü" aria-label="Menü"><span data-art="menu:20"></span></button>
+        <button class="m-tool" id="m-log" title="Chronik & Chat" aria-label="Chronik und Chat"><span data-icon="scroll:19"></span><i class="m-badge" id="m-log-badge" hidden></i></button>
+        <button class="m-tool" id="m-full" title="Vollbild" aria-label="Vollbild" hidden><span data-icon="expand:19"></span></button>
+        <button class="m-tool" id="m-reset" title="Ansicht zurücksetzen" aria-label="Ansicht zurücksetzen"><span data-icon="focus:19"></span></button>
+      </div>
+      <nav class="m-bar" id="m-bar"></nav>
+      <div class="m-backdrop" id="m-backdrop" hidden></div>
+
       <div class="footbar">
         <span class="foot-side"></span>
         <div class="footnote" id="footnote">Wer zuerst 10 Siegpunkte erreicht, gewinnt</div>
