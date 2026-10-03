@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createGame, applyAction, viewFor, longestRoadFor, pendingActors, resCount, validSettlementSpots, validRoadSpots,
-  RESOURCES, PIPS,
+  RESOURCES, PIPS, TERRAIN_RESOURCE,
 } from '../shared/engine.js';
 import { botAction } from '../server/bot.js';
 
@@ -71,6 +71,40 @@ test('Würfeln verteilt Erträge korrekt und Bank bleibt konsistent', () => {
   assert.ok(r.ok);
   assert.equal(total(), 95);
   assert.equal(applyAction(g, g.current, { type: 'roll' }).ok, false, 'nicht zweimal würfeln');
+});
+
+// Würfel mit genau dieser Augensumme (2–12)
+const diceFor = (n) => [Math.min(6, n - 1), n - Math.min(6, n - 1)];
+
+test('Feld unter dem Räuber liefert nichts und wird im Wurf gemeldet', () => {
+  const g = setupGame(21);
+  const hex = g.board.hexes.find((h) => h.number && h.vertices.some((v) => g.buildings[v]));
+  g.robber = hex.id;
+  const owners = hex.vertices.filter((v) => g.buildings[v]).map((v) => g.buildings[v].player);
+  const res = TERRAIN_RESOURCE[hex.terrain];
+  const before = g.players.map((p) => p.resources[res]);
+  // Andere Felder mit derselben Zahl dürfen weiter liefern – erwartet wird nur, was dort anfällt
+  const others = g.board.hexes.filter((h) => h.number === hex.number && h.id !== hex.id && TERRAIN_RESOURCE[h.terrain] === res);
+  const fromOthers = (pi) => others.reduce((s, h) => s + h.vertices.reduce((a, v) => a + (g.buildings[v]?.player === pi ? (g.buildings[v].type === 'city' ? 2 : 1) : 0), 0), 0);
+  assert.ok(applyAction(g, g.current, { type: 'roll', forced: diceFor(hex.number) }).ok);
+  const ev = g.events.findLast((e) => e.type === 'roll');
+  assert.equal(ev.blocked, hex.id);
+  for (const pi of owners) assert.equal(g.players[pi].resources[res] - before[pi], fromOthers(pi), 'blockiertes Feld liefert nichts');
+});
+
+test('Reicht die Bank nicht für alle, erhält niemand etwas – und der Wurf meldet es', () => {
+  const g = setupGame(21);
+  const hex = g.board.hexes.find((h) => h.id !== g.robber && h.number && new Set(h.vertices.filter((v) => g.buildings[v]).map((v) => g.buildings[v].player)).size > 1);
+  assert.ok(hex, 'Testbrett braucht ein Feld mit zwei Besitzern');
+  const res = TERRAIN_RESOURCE[hex.terrain];
+  const stash = g.bank[res] - 1;
+  g.bank[res] = 1;
+  g.players[g.current].resources[res] += stash;
+  const before = g.players.map((p) => p.resources[res]);
+  assert.ok(applyAction(g, g.current, { type: 'roll', forced: diceFor(hex.number) }).ok);
+  const ev = g.events.findLast((e) => e.type === 'roll');
+  assert.deepEqual(ev.short, [res]);
+  assert.deepEqual(g.players.map((p) => p.resources[res]), before);
 });
 
 test('Eine 7 erzwingt Abwerfen und Räuber', () => {

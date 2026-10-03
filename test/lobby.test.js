@@ -144,3 +144,25 @@ test('Zugzeit: Abwerfen hat eine eigene Frist, die Zugzeit pausiert solange', ()
   const left = room.clock.endsAt - now;
   assert.ok(left > 40_000, `die eigentliche Zugzeit lief während des Abwerfens nicht weiter (${left} ms übrig)`);
 });
+
+test('Spieler können sich keine Augenzahl aussuchen', () => {
+  const lobby = createLobby({ botDelayScale: 0 });
+  const anna = fakeConn();
+  say(lobby, anna, { t: 'hello' });
+  say(lobby, anna, { t: 'createRoom', name: 'Anna', solo: true, bots: 1 });
+  const room = lobby.rooms.get(anna.room);
+  const g = room.game;
+  // Gründungsphase überspringen: Anna ist am Zug und darf würfeln
+  g.phase = 'play';
+  g.current = 0;
+  g.turn = { ...g.turn, number: 1, round: 1, rolled: false, pending: null, freeRoads: 0 };
+  let sevens = 0;
+  for (let i = 0; i < 40; i++) {
+    g.turn.rolled = false;
+    g.turn.pending = null;
+    say(lobby, anna, { t: 'action', action: { type: 'roll', forced: [3, 4] } });
+    const [a, b] = g.turn.dice;
+    if (a + b === 7) sevens++;
+  }
+  assert.ok(sevens < 40, 'mitgeschickte Würfel werden ignoriert');
+});

@@ -556,8 +556,9 @@ const HANDLERS = {
       }
       return null;
     }
-    const gains = produce(state, sum);
-    addEvent(state, { type: 'roll', player: idx, dice: [d1, d2], gains });
+    const { gains, short, blocked } = produce(state, sum);
+    // blocked: Feld mit dieser Zahl unter dem Räuber · short: Rohstoffe, von denen die Bank zu wenig hatte
+    addEvent(state, { type: 'roll', player: idx, dice: [d1, d2], gains, blocked, short });
     return null;
   },
 
@@ -852,8 +853,11 @@ function swap(state, a, b, aGives, bGives) {
 
 function produce(state, sum) {
   const demand = {}; // res -> { playerIdx: n }
+  let blocked = null;
+  const short = [];
   for (const h of state.board.hexes) {
-    if (h.number !== sum || h.id === state.robber) continue;
+    if (h.number !== sum) continue;
+    if (h.id === state.robber) { blocked = h.id; continue; }
     const r = TERRAIN_RESOURCE[h.terrain];
     for (const v of h.vertices) {
       const b = state.buildings[v];
@@ -870,6 +874,7 @@ function produce(state, sum) {
     if (total > state.bank[r]) {
       if (owners.length > 1) {
         addLog(state, null, `Die Bank hat nicht genug ${RES_LABEL[r]} – niemand erhält etwas davon.`, 'bank');
+        short.push(r);
         continue;
       }
       give = { [owners[0]]: state.bank[r] };
@@ -886,7 +891,11 @@ function produce(state, sum) {
   for (const [pi, g] of Object.entries(gains)) {
     addLog(state, Number(pi), `${state.players[pi].name} erhält ${fmtRes(g)}.`, 'harvest');
   }
-  return gains;
+  if (blocked !== null) {
+    const h = state.board.hexes[blocked];
+    addLog(state, null, `Der Räuber blockiert ${TERRAIN_LABEL[h.terrain]} (${sum}) – dort gibt es nichts.`, 'robber');
+  }
+  return { gains, short, blocked };
 }
 
 // ---------- Sicht eines Spielers (verdeckte Informationen entfernen) ----------

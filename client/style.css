@@ -447,7 +447,8 @@ select { padding: 6px 8px; font-size: 13px; }
 @keyframes toastOut { to { opacity: 0; transform: translateY(8px); } }
 
 .banner {
-  position: absolute; top: 54px; left: 50%; transform: translateX(-50%); padding: 8px 18px; border-radius: 10px; z-index: 3;
+  /* Zentriert über margin statt transform – die Einblend-Animation setzt transform zurück */
+  position: absolute; top: 54px; left: 0; right: 0; margin: 0 auto; width: fit-content; max-width: calc(100% - 24px); padding: 8px 18px; border-radius: 10px; z-index: 3;
   background: rgba(38, 26, 17, 0.92); border: 1px solid var(--gold); color: var(--parch); text-align: center;
   font-family: var(--serif); font-size: 18px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); animation: toastIn 0.3s ease both;
 }
@@ -1204,7 +1205,8 @@ html.ui-compact { touch-action: manipulation; -webkit-tap-highlight-color: trans
 .ui-compact .toast { min-width: 0; width: 100%; max-width: 420px; padding: 7px 8px 7px 7px; gap: 10px; }
 .ui-compact .toast b { font-size: 15px; }
 .ui-compact .toast .num { width: 30px; height: 30px; font-size: 17px; }
-.ui-compact .banner { top: 74px; max-width: calc(100% - 24px); font-size: 16px; padding: 7px 14px; }
+.ui-compact .banner { top: 74px; font-size: 16px; padding: 7px 14px; }
+.ui-portrait .banner { left: 8px; right: 58px; max-width: none; }
 .ui-compact .notices { top: max(8px, env(safe-area-inset-top)); }
 .ui-compact .tour-panel { bottom: 8px; width: calc(100% - 16px); }
 .ui-compact .award-pop { width: min(300px, 86%); padding: 14px 16px 12px; }

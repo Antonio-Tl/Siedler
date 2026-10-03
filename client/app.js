@@ -1457,7 +1457,20 @@ function rollSequence(ev, st) {
   const sum = ev.dice[0] + ev.dice[1];
   const rolling = boardToast({ icon: 'dice', title: 'Lass die Würfel entscheiden', text: `${esc(nameOf(ev.player))} würfelt …`, sticky: true });
   play('dice');
-  const producing = ev.robber ? [] : st.board.hexes.filter((h) => h.number === sum && h.id !== st.robber).map((h) => h.id);
+  // Ältere Spielstände kennen ev.blocked noch nicht – dann zählt der aktuelle Platz des Räubers
+  const robberHex = ev.blocked !== undefined ? ev.blocked : st.robber;
+  const blocked = ev.blocked ?? null;
+  const short = ev.short || [];
+  const producing = ev.robber ? [] : st.board.hexes.filter((h) => h.number === sum && h.id !== robberHex).map((h) => h.id);
+  // Warum gibt es (für dich) weniger als erwartet? Räuber auf einem Feld mit dieser Zahl oder leere Bank
+  const notes = [];
+  if (blocked !== null) {
+    const h = st.board.hexes[blocked];
+    const res = RES_LABEL[TERRAIN_RESOURCE[h.terrain]];
+    const hitsMe = h.vertices.some((v) => st.buildings[v]?.player === S.you);
+    notes.push(hitsMe ? `Der Räuber blockiert ${res} (${sum}) – dein Ertrag dort fällt aus.` : `Der Räuber blockiert ${res} (${sum}).`);
+  }
+  if (short.length) notes.push(`Die Bank hat zu wenig ${short.map((r) => RES_LABEL[r]).join(' und ')} – niemand erhält etwas davon.`);
   const stops = [
     { view: () => S.board.trayView(), dur: 600, cam: 'camDice' },
     { action: async () => { await S.board.showDice(ev.dice); rolling.dismiss(); } },
@@ -1476,16 +1489,18 @@ function rollSequence(ev, st) {
     });
   } else if (producing.length) {
     stops.push({
-      view: () => S.board.hexesView(producing),
+      view: () => S.board.hexesView(blocked !== null ? [...producing, blocked] : producing),
       cam: 'camHarvest',
       dur: 800,
       hold: 1500,
       action: async () => {
         S.board.flashHexes(producing);
+        if (blocked !== null) S.board.flashHexes([blocked], '#ff5a3c');
         const items = [];
         for (const hid of producing) {
           const h = st.board.hexes[hid];
           const res = TERRAIN_RESOURCE[h.terrain];
+          if (short.includes(res)) continue;
           for (const vid of h.vertices) {
             const b = st.buildings[vid];
             if (!b) continue;
@@ -1498,8 +1513,22 @@ function rollSequence(ev, st) {
         const g = ev.gains[S.you];
         const gains = g ? RESOURCES.filter((r) => g[r]).map((r) => `<span class="gain">${resourceArt(r, 18)} +${g[r]} ${RES_LABEL[r]}</span>`) : [];
         const who = Object.keys(ev.gains).length;
-        boardToast({ num: sum, red: sum === 6 || sum === 8, title: 'Die Insel liefert', text: gains.length ? '' : who ? `${who} Siedler erhalten Rohstoffe.` : 'Diesmal bringt kein Feld Ertrag.', gainsHtml: gains.join('') });
+        const text = gains.length ? '' : who ? `${who} Siedler erhalten Rohstoffe.` : 'Diesmal bringt kein Feld Ertrag.';
+        boardToast({ num: sum, red: sum === 6 || sum === 8, title: 'Die Insel liefert', text: [text, ...notes].filter(Boolean).join(' '), gainsHtml: gains.join('') });
         setTimeout(() => flyGains(ev, items), 650);
+      },
+    });
+  } else if (blocked !== null) {
+    // Das einzige Feld mit dieser Zahl steht unter dem Räuber: zeigen, warum nichts kommt
+    const h = st.board.hexes[blocked];
+    stops.push({
+      view: () => S.board.pointView(h.x, h.y, 3.8),
+      cam: 'camHarvest',
+      dur: 800,
+      hold: 1300,
+      action: async () => {
+        S.board.flashHexes([blocked], '#ff5a3c');
+        boardToast({ num: sum, red: sum === 6 || sum === 8, title: 'Die Insel schweigt', text: notes.join(' ') });
       },
     });
   } else {

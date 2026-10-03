@@ -535,7 +535,9 @@ export function createLobby({ botDelayScale = 1, onSave = () => {}, onDelete = (
       }
       case 'action': {
         if (!room || !room.game || seatIdx < 0) return;
-        const r = applyAction(room.game, seatIdx, msg.action || {});
+        // „forced“ (feste Augenzahlen) gibt es nur für Tests – Spieler würfeln immer zufällig
+        const { forced, ...action } = msg.action || {};
+        const r = applyAction(room.game, seatIdx, action);
         if (!r.ok) return send(conn, { t: 'error', msg: r.error });
         broadcast(room);
         pump(room);

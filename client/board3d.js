@@ -281,6 +281,7 @@ export class Board3D {
     this.focusRing = null;
     this.hexTiles = [];
     this.tokens = [];
+    this.tokenAz = undefined;
     this.hexGlow = [];
     this.flags = [];
     this.synced = false;
@@ -608,7 +609,8 @@ export class Board3D {
     this.anims.push((now) => {
       const t = Math.min(1, (now - start) / 900);
       tok.position.y = SURF + 0.002 + Math.sin(t * Math.PI) * 0.18;
-      tok.rotation.y = easeInOut(t) * Math.PI * 2;
+      // Eine volle Drehung, die wieder in Blickrichtung der Kamera endet
+      tok.rotation.y = (this.tokenAz || 0) + easeInOut(t) * Math.PI * 2;
       return t < 1;
     });
   }
@@ -1266,6 +1268,12 @@ export class Board3D {
     }
     if (this.robber) this.robber.rotation.y = Math.sin(time * 0.6) * 0.35;
     for (const l of this.harborLabels || []) l.quaternion.copy(this.camera.quaternion);
+    // Zahlenchips drehen sich mit der Kamera: so steht eine 6 nie auf dem Kopf und sieht aus wie eine 9
+    const az = Math.atan2(this.camera.position.x - this.controls.target.x, this.camera.position.z - this.controls.target.z);
+    if (Math.abs(az - (this.tokenAz ?? 0)) > 0.004 || this.tokenAz === undefined) {
+      this.tokenAz = az;
+      this.tokens.forEach((t) => { t.rotation.y = az; });
+    }
 
     // Beim Verschieben die Insel nicht aus den Augen verlieren
     const tgt = this.controls.target;
